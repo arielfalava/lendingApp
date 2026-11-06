@@ -1,0 +1,13 @@
+{
+  "name": "import-excel",
+  "private": true,
+  "type": "module",
+  "description": "One-off importer: pautang.xlsx (one sheet per borrower) -> LendingApp API",
+  "scripts": {
+    "dry-run": "node import.mjs",
+    "import": "node import.mjs --apply"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}

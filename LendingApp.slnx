@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/LendingApp.Api/LendingApp.Api.csproj" />
+  </Folder>
+</Solution>
