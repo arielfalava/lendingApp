@@ -116,7 +116,8 @@ public class ExportBorrowerHandler(LendingDbContext db) : IQueryHandler<ExportBo
         // Loans
         string[] extra = ["Total owed", "Total paid", "Remaining balance"];
         var ws = wb.AddWorksheet(LoanSheet.SheetName);
-        var loanCols = BorrowerSheet.LoanColumns.Concat(extra).ToList();
+        // Exports leave out Remarks (columns 1–8, then the computed ones); the import still reads a Remarks column if one is added.
+        var loanCols = BorrowerSheet.LoanColumns.Where(c => c != LoanSheet.Remarks).Concat(extra).ToList();
         BorrowerSheet.Header(ws, loanCols, BorrowerSheet.LoanRequired);
         for (var c = loanCols.Count - extra.Length + 1; c <= loanCols.Count; c++)
             ws.Cell(1, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF4D6");
@@ -140,16 +141,14 @@ public class ExportBorrowerHandler(LendingDbContext db) : IQueryHandler<ExportBo
             ws.Cell(r2, 6).Value = LoanSheet.Label(l.TermUnit);
             ws.Cell(r2, 7).Value = l.StartDate.ToDateTime(TimeOnly.MinValue);
             ws.Cell(r2, 8).Value = LoanSheet.Label(l.Status);
-            ws.Cell(r2, 9).Value = l.Notes;
-            ws.Cell(r2, 10).Value = due;
-            ws.Cell(r2, 11).Value = paid;
-            ws.Cell(r2, 12).Value = Math.Max(due - paid, 0);
+            ws.Cell(r2, 9).Value = due;
+            ws.Cell(r2, 10).Value = paid;
+            ws.Cell(r2, 11).Value = Math.Max(due - paid, 0);
         }
         ws.Range(2, 7, lastLoanRow, 7).Style.DateFormat.Format = "yyyy-mm-dd";
         ws.Range(2, 2, lastLoanRow, 2).Style.NumberFormat.Format = "#,##0.00";
-        ws.Range(2, 10, lastLoanRow, 12).Style.NumberFormat.Format = "#,##0.00";
+        ws.Range(2, 9, lastLoanRow, 11).Style.NumberFormat.Format = "#,##0.00";
         ws.Columns().AdjustToContents(1, Math.Min(r2, 300));
-        ws.Column(9).Width = Math.Min(Math.Max(ws.Column(9).Width, 20), 50);
 
         // Payments
         var ps = wb.AddWorksheet(BorrowerSheet.PaymentsSheet);

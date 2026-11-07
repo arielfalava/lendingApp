@@ -72,13 +72,15 @@ internal static class LoanSheet
         }
         ws.SheetView.FreezeRows(1);
 
+        // Styles go by column name, so a sheet that leaves some columns out (the export has no Remarks) still lines up.
         var lastRow = Math.Max(rows, 1) + 1;
-        ws.Range(2, Index(TermUnit), lastRow, Index(TermUnit)).CreateDataValidation().List($"\"{string.Join(",", TermUnitLabels)}\"");
-        ws.Range(2, Index(Status), lastRow, Index(Status)).CreateDataValidation().List($"\"{string.Join(",", StatusLabels)}\"");
-        ws.Range(2, Index(StartDate), lastRow, Index(StartDate)).Style.DateFormat.Format = "yyyy-mm-dd";
-        ws.Range(2, Index(PaidOn), lastRow, Index(PaidOn)).Style.DateFormat.Format = "yyyy-mm-dd";
+        IXLRange? Col(string name) => cols.IndexOf(name) is >= 0 and var i ? ws.Range(2, i + 1, lastRow, i + 1) : null;
+        Col(TermUnit)?.CreateDataValidation().List($"\"{string.Join(",", TermUnitLabels)}\"");
+        Col(Status)?.CreateDataValidation().List($"\"{string.Join(",", StatusLabels)}\"");
+        foreach (var date in new[] { StartDate, PaidOn })
+            if (Col(date) is { } range) range.Style.DateFormat.Format = "yyyy-mm-dd";
         foreach (var money in new[] { Principal, PaidSoFar })
-            ws.Range(2, Index(money), lastRow, Index(money)).Style.NumberFormat.Format = "#,##0.00";
+            if (Col(money) is { } range) range.Style.NumberFormat.Format = "#,##0.00";
         return ws;
     }
 
@@ -162,9 +164,11 @@ public class ExportLoansHandler(IDispatcher dispatcher, LendingDbContext db) : I
             .Select(g => new { g.Key, Last = g.Max(p => p.PaidOn) })
             .ToDictionaryAsync(x => x.Key, x => x.Last, ct);
 
+        // Columns: A Borrower, B Principal, C Interest %, D Term, E Term unit, F Start date, G Status,
+        // H Amount paid so far, I Paid on, J Total owed, K Remaining balance. (No Remarks in exports.)
         string[] extra = ["Total owed", "Remaining balance"];
         using var wb = new XLWorkbook();
-        var ws = LoanSheet.AddLoansSheet(wb, LoanSheet.Columns.Concat(extra), loans.Count);
+        var ws = LoanSheet.AddLoansSheet(wb, LoanSheet.Columns.Where(c => c != LoanSheet.Remarks).Concat(extra), loans.Count);
 
         var r = 2;
         foreach (var l in loans)
@@ -176,29 +180,27 @@ public class ExportLoansHandler(IDispatcher dispatcher, LendingDbContext db) : I
             ws.Cell(r, 5).Value = LoanSheet.Label(l.TermUnit);
             ws.Cell(r, 6).Value = l.StartDate.ToDateTime(TimeOnly.MinValue);
             ws.Cell(r, 7).Value = LoanSheet.Label(l.Status);
-            ws.Cell(r, 8).Value = l.Notes;
-            ws.Cell(r, 9).Value = l.TotalPaid;
-            if (lastPaid.TryGetValue(l.Id, out var paidOn)) ws.Cell(r, 10).Value = paidOn.ToDateTime(TimeOnly.MinValue);
-            ws.Cell(r, 11).Value = l.TotalDue;
-            ws.Cell(r, 12).Value = l.Balance;
+            ws.Cell(r, 8).Value = l.TotalPaid;
+            if (lastPaid.TryGetValue(l.Id, out var paidOn)) ws.Cell(r, 9).Value = paidOn.ToDateTime(TimeOnly.MinValue);
+            ws.Cell(r, 10).Value = l.TotalDue;
+            ws.Cell(r, 11).Value = l.Balance;
             r++;
         }
 
-        ws.Range(2, 11, Math.Max(r - 1, 2), 12).Style.NumberFormat.Format = "#,##0.00";
+        ws.Range(2, 10, Math.Max(r - 1, 2), 11).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(1, 10).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF4D6");
         ws.Cell(1, 11).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF4D6");
-        ws.Cell(1, 12).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF4D6");
         if (loans.Count > 0)
         {
             // Same rule as the Loans page total: only Active and Defaulted loans still count as owed
             // (a Paid off, Pending or Cancelled row can show a balance but isn't money owed).
-            ws.Cell(r, 11).Value = "Total owed (Active + Defaulted)";
+            ws.Cell(r, 10).Value = "Total owed (Active + Defaulted)";
+            ws.Cell(r, 10).Style.Font.Bold = true;
+            ws.Cell(r, 11).FormulaA1 = $"SUMIFS(K2:K{r - 1},G2:G{r - 1},\"Active\")+SUMIFS(K2:K{r - 1},G2:G{r - 1},\"Defaulted\")";
             ws.Cell(r, 11).Style.Font.Bold = true;
-            ws.Cell(r, 12).FormulaA1 = $"SUMIFS(L2:L{r - 1},G2:G{r - 1},\"Active\")+SUMIFS(L2:L{r - 1},G2:G{r - 1},\"Defaulted\")";
-            ws.Cell(r, 12).Style.Font.Bold = true;
-            ws.Cell(r, 12).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(r, 11).Style.NumberFormat.Format = "#,##0.00";
         }
         ws.Columns().AdjustToContents(1, Math.Min(r, 300));
-        ws.Column(8).Width = Math.Min(ws.Column(8).Width, 50);
 
         return LoanSheet.ToBytes(wb);
     }
@@ -228,11 +230,9 @@ public class ExportLoanHandler(IDispatcher dispatcher) : IQueryHandler<ExportLoa
             ("Interest type", l.InterestType.ToString(), null),
             (LoanSheet.Term, l.TermUnit == TermUnit.NoDeadline ? null : l.Term, null),
             (LoanSheet.TermUnit, LoanSheet.Label(l.TermUnit), null),
-            ("Installment", l.Installment, "#,##0.00"),
             (LoanSheet.StartDate, D(l.StartDate), "yyyy-mm-dd"),
             ("Due date", l.MaturityDate is { } m ? D(m) : null, "yyyy-mm-dd"),
             (LoanSheet.Status, LoanSheet.Label(l.Status), null),
-            (LoanSheet.Remarks, l.Notes, null),
             ("Total owed", l.TotalDue, "#,##0.00"),
             ("Total paid", l.TotalPaid, "#,##0.00"),
             ("Remaining balance", l.Balance, "#,##0.00"),
