@@ -1,8 +1,11 @@
 using System.Text.Json.Serialization;
 using LendingApp.Api.Cqrs;
+using LendingApp.Api.Domain;
+using LendingApp.Api.Features.Auth;
 using LendingApp.Api.Features.Borrowers;
 using LendingApp.Api.Features.Dashboard;
 using LendingApp.Api.Features.History;
+using LendingApp.Api.Features.LoanExcel;
 using LendingApp.Api.Features.Loans;
 using LendingApp.Api.Features.Payments;
 using LendingApp.Api.Infrastructure;
@@ -16,6 +19,7 @@ builder.Services.AddCqrs(typeof(Program).Assembly);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddAppAuth();
 
 var app = builder.Build();
 
@@ -40,16 +44,26 @@ app.Use(async (ctx, next) =>
     }
 });
 
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi(); // GET /openapi/v1.json
 }
 
-app.MapBorrowers();
-app.MapLoans();
-app.MapPayments();
-app.MapHistory();
-app.MapDashboard();
+app.MapAuth();
+
+// Everything else under /api needs a signed-in user.
+var secured = app.MapGroup("").RequireAuthorization();
+secured.MapBorrowers();
+secured.MapLoans();
+secured.MapLoanExcel();
+secured.MapPayments();
+secured.MapHistory();
+secured.MapDashboard();
 
 // Serve the built React app (frontend `npm run build` outputs into wwwroot) when present.
 app.UseDefaultFiles();
@@ -60,6 +74,8 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LendingDbContext>();
     await DatabaseSetup.EnsureSchemaAsync(db);
+    await AuthSetup.EnsureAdminAsync(db, app.Configuration,
+        scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<AppUser>>(), app.Logger);
     if (app.Configuration.GetValue("SeedDemoData", true))
         await DemoData.SeedAsync(scope.ServiceProvider.GetRequiredService<IDispatcher>(), db);
 }

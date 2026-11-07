@@ -37,6 +37,16 @@ public static class DatabaseSetup
             await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Loans" RENAME COLUMN "TermMonths" TO "Term";""");
         if (!loanColumns.Contains("TermUnit"))
             await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Loans" ADD COLUMN "TermUnit" TEXT NOT NULL DEFAULT 'Months';""");
+
+        // 2026-11: sign-in. Same shape EF would create for AppUser.
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "Users" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Users" PRIMARY KEY,
+                "Email" TEXT NOT NULL,
+                "PasswordHash" TEXT NOT NULL,
+                "CreatedAt" TEXT NOT NULL);
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_Email" ON "Users" ("Email");
+            """);
     }
 
     private static async Task<HashSet<string>> Columns(LendingDbContext db, string table) =>

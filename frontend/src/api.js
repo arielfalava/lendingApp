@@ -1,29 +1,57 @@
 // Thin client for the CQRS API. Reads go through `query`-style GETs, writes through commands (POST/PUT/DELETE).
+// The session is an HttpOnly cookie set by /api/auth/login, so requests just need same-origin credentials.
 
 export class ApiError extends Error {
-  constructor(message, status, fieldErrors = {}) {
+  constructor(message, status, fieldErrors = {}, details = []) {
     super(message)
     this.status = status
     this.fieldErrors = fieldErrors
+    this.details = details // every message, e.g. one per bad row in an Excel import
   }
 }
 
-async function request(method, url, body) {
+// Called when any request comes back 401 (session expired or signed out elsewhere).
+let onUnauthorized = () => {}
+export const setUnauthorizedHandler = (fn) => (onUnauthorized = fn)
+
+async function toError(res) {
+  const data = await res.json().catch(() => null)
+  // ASP.NET ProblemDetails: { title, detail, errors: { field: [msg] } }
+  const lists = Object.entries(data?.errors ?? {}).map(([k, v]) => [k.charAt(0).toLowerCase() + k.slice(1), v])
+  const errors = Object.fromEntries(lists.map(([k, v]) => [k, v.join(' ')]))
+  const details = lists.flatMap(([, v]) => v)
+  const message = data?.detail || details[0] || data?.title || `Request failed (${res.status})`
+  return new ApiError(message, res.status, errors, details)
+}
+
+async function send(method, url, { json, form } = {}) {
   const res = await fetch(url, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'same-origin',
+    headers: json ? { 'Content-Type': 'application/json' } : undefined,
+    body: json ? JSON.stringify(json) : form,
   })
+  if (res.status === 401 && !url.startsWith('/api/auth/')) onUnauthorized()
+  if (!res.ok) throw await toError(res)
+  return res
+}
+
+async function request(method, url, body) {
+  const res = await send(method, url, { json: body })
   if (res.status === 204) return null
-  const data = await res.json().catch(() => null)
-  if (!res.ok) {
-    // ASP.NET ProblemDetails: { title, detail, errors: { field: [msg] } }
-    const errors = Object.fromEntries(
-      Object.entries(data?.errors ?? {}).map(([k, v]) => [k.charAt(0).toLowerCase() + k.slice(1), v.join(' ')]),
-    )
-    throw new ApiError(data?.detail || Object.values(errors)[0] || data?.title || `Request failed (${res.status})`, res.status, errors)
-  }
-  return data
+  return res.json().catch(() => null)
+}
+
+/** Fetches a file and hands it to the browser as a download. */
+async function download(url, fallbackName) {
+  const res = await send('GET', url)
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName
+  const href = URL.createObjectURL(await res.blob())
+  const a = Object.assign(document.createElement('a'), { href, download: name })
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(href), 1000)
 }
 
 const qs = (params) => {
@@ -33,6 +61,11 @@ const qs = (params) => {
 }
 
 export const api = {
+  // Session
+  me: () => request('GET', '/api/auth/me'),
+  login: (email, password) => request('POST', '/api/auth/login', { email, password }),
+  logout: () => request('POST', '/api/auth/logout'),
+
   // Queries
   dashboard: () => request('GET', '/api/dashboard'),
   borrowers: (search) => request('GET', `/api/borrowers${qs({ search })}`),
@@ -40,6 +73,15 @@ export const api = {
   loans: (filters = {}) => request('GET', `/api/loans${qs(filters)}`),
   loan: (id) => request('GET', `/api/loans/${id}`),
   history: (filters = {}) => request('GET', `/api/history${qs(filters)}`),
+
+  // Excel
+  exportLoans: (filters = {}) => download(`/api/loans/export${qs(filters)}`, 'loans.xlsx'),
+  downloadImportTemplate: () => download('/api/loans/import-template', 'loan-import-template.xlsx'),
+  importLoans: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return send('POST', '/api/loans/import', { form }).then((r) => r.json())
+  },
 
   // Commands
   createBorrower: (input) => request('POST', '/api/borrowers', input),

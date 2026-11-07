@@ -1,10 +1,13 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
+import { api, setUnauthorizedHandler } from './api'
 import BorrowerDetail from './pages/BorrowerDetail'
 import Borrowers from './pages/Borrowers'
 import Dashboard from './pages/Dashboard'
 import History from './pages/History'
 import LoanDetail from './pages/LoanDetail'
 import Loans from './pages/Loans'
+import Login from './pages/Login'
 
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
@@ -14,6 +17,21 @@ const NAV = [
 ]
 
 export default function App() {
+  // undefined = still checking the session, null = signed out, object = signed-in user
+  const [user, setUser] = useState(undefined)
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null))
+    api.me().then(setUser, () => setUser(null))
+  }, [])
+
+  const signOut = async () => {
+    try { await api.logout() } finally { setUser(null) }
+  }
+
+  if (user === undefined) return null
+  if (user === null) return <Login onLogin={setUser} />
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -28,6 +46,10 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <div className="account">
+          <span className="account-email" title={user.email}>{user.email}</span>
+          <button className="link-btn" onClick={signOut}>Sign out</button>
+        </div>
       </aside>
       <main className="content">
         <Routes>

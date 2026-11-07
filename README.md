@@ -94,3 +94,31 @@ node import.mjs "F:/Ariel/pautang/pautang.xlsx" --apply
 ```
 
 The first run is a dry run that prints every loan, payment and balance; `--apply` imports (it refuses if borrowers already exist). Rules it follows: *Utang* includes 20% flat interest (principal = Utang ÷ 1.2); a *Renew* row settles the old loan's remaining balance on the renewal date; "Other utang" tables are separate loans.
+
+## Sign in
+
+Every page and `/api` endpoint (except `/api/auth/*`) requires signing in. Sessions are an HttpOnly, SameSite=Strict cookie that lasts 12 hours (sliding). Login attempts are limited to 10 per 5 minutes per IP. Passwords are stored only as salted PBKDF2 hashes.
+
+**First admin account.** When the database has no users, the API creates one at startup from configuration. Keep these out of `appsettings.json`; use user-secrets (stored outside the repo) and remove the password once the account exists:
+
+```bash
+cd backend/LendingApp.Api && dotnet user-secrets set "Admin:Email" "you@example.com"
+```
+
+```bash
+cd backend/LendingApp.Api && dotnet user-secrets set "Admin:Password" "a-strong-password"
+```
+
+Start the API (it logs "Created admin account …"), then:
+
+```bash
+cd backend/LendingApp.Api && dotnet user-secrets remove "Admin:Password"
+```
+
+## Excel import / export (Loans page)
+
+- **Export Excel** downloads the loans currently shown (respects the status filter and search), with total owed, remaining balance and a total row.
+- **Import Excel → Download the template** gives a `Loans` sheet with dropdowns for term unit and status, plus a "How to fill" sheet.
+- **Import** is all-or-nothing: if any row is invalid, nothing is saved and every problem is listed by row. Borrowers are matched by exact name; unknown names become new borrowers. "Amount paid so far" is recorded as one payment.
+
+Note: `tools/import-excel` was a one-off for the original workbook and calls the API without signing in, so it no longer works as-is now that the API requires a session.

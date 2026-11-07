@@ -13,6 +13,7 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
     public DbSet<Loan> Loans => Set<Loan>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+    public DbSet<AppUser> Users => Set<AppUser>();
 
     // Fields that are noise in the history view.
     private static readonly HashSet<string> IgnoredFields = ["Id", "CreatedAt"];
@@ -29,6 +30,12 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
         b.Entity<Borrower>().Property(x => x.Id).ValueGeneratedNever();
         b.Entity<Loan>().Property(x => x.Id).ValueGeneratedNever();
         b.Entity<Payment>().Property(x => x.Id).ValueGeneratedNever();
+        b.Entity<AppUser>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Email).HasMaxLength(200);
+            e.HasIndex(x => x.Email).IsUnique();
+        });
 
         b.Entity<Borrower>(e =>
         {

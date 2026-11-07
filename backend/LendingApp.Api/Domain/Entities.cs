@@ -79,6 +79,15 @@ public class Payment : IAuditable
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Someone who can sign in. Only a salted hash of the password is stored.</summary>
+public class AppUser
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Email { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public enum AuditAction
 {
     Created,

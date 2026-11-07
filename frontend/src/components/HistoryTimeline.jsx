@@ -13,6 +13,7 @@ function formatValue(field, value) {
   if (value === null || value === undefined || value === '') return <em className="muted">empty</em>
   if (field === 'Principal' || field === 'Amount') return fmtMoney(Number(value))
   if (field === 'Status') return statusLabel(value)
+  if (field === 'TermUnit') return value === 'NoDeadline' ? 'No deadline' : value
   if (/Id$/.test(field)) return <code title={value}>{value.slice(0, 8)}</code>
   return value
 }

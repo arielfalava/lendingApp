@@ -44,6 +44,13 @@ export default function Borrowers() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <th colSpan={5}>Total remaining balance</th>
+                <td className="r num"><strong>{fmtMoney(data.reduce((sum, b) => sum + b.remainingBalance, 0))}</strong></td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>
