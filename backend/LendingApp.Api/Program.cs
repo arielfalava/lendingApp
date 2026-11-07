@@ -20,6 +20,8 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddAppAuth();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 
 var app = builder.Build();
 
@@ -76,8 +78,7 @@ using (var scope = app.Services.CreateScope())
     await DatabaseSetup.EnsureSchemaAsync(db);
     await AuthSetup.EnsureAdminAsync(db, app.Configuration,
         scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<AppUser>>(), app.Logger);
-    if (app.Configuration.GetValue("SeedDemoData", true))
-        await DemoData.SeedAsync(scope.ServiceProvider.GetRequiredService<IDispatcher>(), db);
+    await DatabaseSetup.AssignUnownedDataAsync(db, app.Logger);
 }
 
 app.Run();

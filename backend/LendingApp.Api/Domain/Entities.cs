@@ -1,14 +1,21 @@
 namespace LendingApp.Api.Domain;
 
+/// <summary>Records that belong to one user. Each user only ever sees and changes their own (see LendingDbContext).</summary>
+public interface IOwned
+{
+    Guid OwnerId { get; set; }
+}
+
 /// <summary>Entities implementing this are tracked in the history (audit) log automatically.</summary>
 public interface IAuditable
 {
     Guid Id { get; }
 }
 
-public class Borrower : IAuditable
+public class Borrower : IAuditable, IOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OwnerId { get; set; }
     public string FirstName { get; set; } = "";
     public string LastName { get; set; } = "";
     public string? Email { get; set; }
@@ -47,9 +54,10 @@ public enum TermUnit
     NoDeadline
 }
 
-public class Loan : IAuditable
+public class Loan : IAuditable, IOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OwnerId { get; set; }
     public Guid BorrowerId { get; set; }
     public Borrower? Borrower { get; set; }
 
@@ -68,9 +76,10 @@ public class Loan : IAuditable
     public List<Payment> Payments { get; set; } = [];
 }
 
-public class Payment : IAuditable
+public class Payment : IAuditable, IOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OwnerId { get; set; }
     public Guid LoanId { get; set; }
     public Loan? Loan { get; set; }
     public decimal Amount { get; set; }
@@ -96,9 +105,10 @@ public enum AuditAction
 }
 
 /// <summary>One row of history: what changed, on which record, and when.</summary>
-public class AuditEntry
+public class AuditEntry : IOwned
 {
     public long Id { get; set; }
+    public Guid OwnerId { get; set; }
     public string EntityType { get; set; } = "";
     public Guid EntityId { get; set; }
     /// <summary>The loan this change relates to (if any), so a loan's full history includes its payments.</summary>

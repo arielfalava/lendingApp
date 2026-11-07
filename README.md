@@ -97,7 +97,9 @@ The first run is a dry run that prints every loan, payment and balance; `--apply
 
 ## Sign in
 
-Every page and `/api` endpoint (except `/api/auth/*`) requires signing in. Sessions are an HttpOnly, SameSite=Strict cookie that lasts 12 hours (sliding). Login attempts are limited to 10 per 5 minutes per IP. Passwords are stored only as salted PBKDF2 hashes.
+Every page and `/api` endpoint (except `/api/auth/*`) requires signing in. **Each account has its own separate data**: borrowers, loans, payments and history are stored with an owner, and every database query is filtered to the signed-in user (EF Core global query filters), so other users' records are simply not found.
+
+Anyone can **create an account** with a Gmail address (`name@gmail.com`) and a password (8+ characters, with a letter and a number); new accounts start empty. Addresses aren't verified by email, so a person could register a Gmail address they don't own, but they'd only ever see that account's own (empty) data. Sessions are an HttpOnly, SameSite=Strict cookie that lasts 12 hours (sliding). Login attempts are limited to 10 per 5 minutes per IP. Passwords are stored only as salted PBKDF2 hashes.
 
 **First admin account.** When the database has no users, the API creates one at startup from configuration. Keep these out of `appsettings.json`; use user-secrets (stored outside the repo) and remove the password once the account exists:
 

@@ -64,6 +64,7 @@ export const api = {
   // Session
   me: () => request('GET', '/api/auth/me'),
   login: (email, password) => request('POST', '/api/auth/login', { email, password }),
+  register: (email, password) => request('POST', '/api/auth/register', { email, password }),
   logout: () => request('POST', '/api/auth/logout'),
 
   // Queries

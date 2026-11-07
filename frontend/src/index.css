@@ -236,3 +236,6 @@ h1 .badge { font-size: 0.8rem; }
 .login-brand { padding: 0 0 18px; }
 .login-card h1 { font-size: 1.35rem; margin-bottom: 16px; }
 .login-submit { width: 100%; margin-top: 6px; padding: 10px; }
+.login-lead { margin: -8px 0 14px; font-size: 0.9rem; }
+.login-switch { margin: 16px 0 0; text-align: center; font-size: 0.9rem; }
+.login-switch .link-btn { font-size: inherit; padding: 0; }

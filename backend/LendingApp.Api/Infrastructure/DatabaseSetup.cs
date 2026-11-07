@@ -47,6 +47,39 @@ public static class DatabaseSetup
                 "CreatedAt" TEXT NOT NULL);
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_Email" ON "Users" ("Email");
             """);
+
+        // 2026-11: each user has their own data. Rows from before this get an owner in AssignUnownedDataAsync.
+        foreach (var table in OwnedTables)
+        {
+            if (!(await Columns(db, table)).Contains("OwnerId"))
+                await db.Database.ExecuteSqlRawAsync($"""ALTER TABLE "{table}" ADD COLUMN "OwnerId" TEXT NULL;""");
+            if (table != "Borrowers")
+                await db.Database.ExecuteSqlRawAsync($"""CREATE INDEX IF NOT EXISTS "IX_{table}_OwnerId" ON "{table}" ("OwnerId");""");
+        }
+        // Borrower emails become unique per user instead of across everyone.
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX IF EXISTS "IX_Borrowers_Email";
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Borrowers_OwnerId_Email" ON "Borrowers" ("OwnerId", "Email");
+            """);
+    }
+
+    private static readonly string[] OwnedTables = ["Borrowers", "Loans", "Payments", "AuditEntries"];
+
+    /// <summary>
+    /// Data created before accounts were separated has no owner. It all belonged to the original (first) account,
+    /// so give it to that user. Runs on every start but only touches rows that still have no owner.
+    /// </summary>
+    public static async Task AssignUnownedDataAsync(LendingDbContext db, ILogger logger)
+    {
+        var firstUser = await db.Users.OrderBy(u => u.CreatedAt).Select(u => new { u.Id, u.Email }).FirstOrDefaultAsync();
+        if (firstUser is null) return;
+
+        // Copy the Id straight from Users so it's stored in exactly the same text form EF uses.
+        var total = 0;
+        foreach (var table in OwnedTables)
+            total += await db.Database.ExecuteSqlRawAsync(
+                $"""UPDATE "{table}" SET "OwnerId" = (SELECT "Id" FROM "Users" ORDER BY "CreatedAt" LIMIT 1) WHERE "OwnerId" IS NULL;""");
+        if (total > 0) logger.LogInformation("Assigned {Count} existing records to {Email}.", total, firstUser.Email);
     }
 
     private static async Task<HashSet<string>> Columns(LendingDbContext db, string table) =>

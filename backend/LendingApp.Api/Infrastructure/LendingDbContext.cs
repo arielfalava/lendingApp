@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace LendingApp.Api.Infrastructure;
 
-public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbContext(options)
+public class LendingDbContext(DbContextOptions<LendingDbContext> options, ICurrentUser currentUser) : DbContext(options)
 {
     public DbSet<Borrower> Borrowers => Set<Borrower>();
     public DbSet<Loan> Loans => Set<Loan>();
@@ -15,8 +15,14 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<AppUser> Users => Set<AppUser>();
 
+    /// <summary>
+    /// The signed-in user. Every query on owned data is filtered to this user's rows (null ⇒ no rows),
+    /// so handlers can't forget to scope a query, and another user's IDs simply aren't found.
+    /// </summary>
+    public Guid? CurrentUserId => currentUser.UserId;
+
     // Fields that are noise in the history view.
-    private static readonly HashSet<string> IgnoredFields = ["Id", "CreatedAt"];
+    private static readonly HashSet<string> IgnoredFields = ["Id", "CreatedAt", "OwnerId"];
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -42,9 +48,19 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
             e.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
             e.Property(x => x.LastName).HasMaxLength(100);
             e.Property(x => x.Email).HasMaxLength(200);
-            e.HasIndex(x => x.Email).IsUnique(); // NULLs don't collide, so many borrowers can have no email
+            // Unique per user; NULLs don't collide, so many borrowers can have no email.
+            e.HasIndex(x => new { x.OwnerId, x.Email }).IsUnique();
             e.Property(x => x.Notes).HasMaxLength(1000);
         });
+
+        // Row-level separation between users.
+        b.Entity<Borrower>().HasQueryFilter(x => x.OwnerId == CurrentUserId);
+        b.Entity<Loan>().HasQueryFilter(x => x.OwnerId == CurrentUserId);
+        b.Entity<Payment>().HasQueryFilter(x => x.OwnerId == CurrentUserId);
+        b.Entity<AuditEntry>().HasQueryFilter(x => x.OwnerId == CurrentUserId);
+        b.Entity<Loan>().HasIndex(x => x.OwnerId);
+        b.Entity<Payment>().HasIndex(x => x.OwnerId);
+        b.Entity<AuditEntry>().HasIndex(x => x.OwnerId);
 
         b.Entity<Loan>(e =>
         {
@@ -83,6 +99,15 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
         var now = DateTime.UtcNow;
         var audits = new List<AuditEntry>();
 
+        // New records belong to whoever is signed in; nobody can save records into another user's data.
+        foreach (var entry in ChangeTracker.Entries<IOwned>())
+        {
+            if (entry.State == EntityState.Added && entry.Entity is not AuditEntry)
+                entry.Entity.OwnerId = CurrentUserId ?? throw new InvalidOperationException("Saving data requires a signed-in user.");
+            else if (entry.State == EntityState.Modified && entry.Property(x => x.OwnerId).IsModified)
+                throw new InvalidOperationException("A record's owner can't be changed.");
+        }
+
         foreach (var entry in ChangeTracker.Entries<IAuditable>().ToList())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
@@ -101,6 +126,7 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
 
             audits.Add(new AuditEntry
             {
+                OwnerId = ((IOwned)entry.Entity).OwnerId,
                 EntityType = entry.Entity.GetType().Name,
                 EntityId = entry.Entity.Id,
                 LoanId = loanId,

@@ -19,6 +19,44 @@ public record LoginCommand(string Email, string Password) : ICommand<UserDto?>;
 
 public record GetUserQuery(Guid Id) : IQuery<UserDto?>;
 
+/// <summary>Creates an account for a Gmail address. The new user starts with no data of their own.</summary>
+public record RegisterCommand(string? Email, string? Password) : ICommand<UserDto>;
+
+public partial class RegisterHandler(LendingDbContext db, IPasswordHasher<AppUser> hasher) : ICommandHandler<RegisterCommand, UserDto>
+{
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[a-z0-9](?:[a-z0-9.+_-]{0,62}[a-z0-9])?@gmail\.com$")]
+    private static partial System.Text.RegularExpressions.Regex GmailAddress();
+
+    public async Task<UserDto> Handle(RegisterCommand c, CancellationToken ct)
+    {
+        var email = c.Email?.Trim().ToLowerInvariant() ?? "";
+        var password = c.Password ?? "";
+        var isGmail = GmailAddress().IsMatch(email);
+        var taken = isGmail && await db.Users.AnyAsync(u => u.Email == email, ct);
+
+        new Rules()
+            .Require(isGmail, "email", "Use a Gmail address (name@gmail.com).")
+            .Require(!taken, "email", "An account with this email already exists. Sign in instead.")
+            .Require(password.Length >= 8, "password", "Use at least 8 characters.")
+            .Require(password.Length <= 128, "password", "Use at most 128 characters.")
+            .Require(password.Any(char.IsLetter) && password.Any(char.IsDigit), "password", "Include at least one letter and one number.")
+            .ThrowIfInvalid();
+
+        var user = new AppUser { Email = email };
+        user.PasswordHash = hasher.HashPassword(user, password);
+        db.Users.Add(user);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) // two sign-ups for the same address at once: the unique index catches it
+        {
+            throw new ValidationException(new Dictionary<string, string[]> { ["email"] = ["An account with this email already exists. Sign in instead."] });
+        }
+        return new UserDto(user.Id, user.Email);
+    }
+}
+
 public class LoginHandler(LendingDbContext db, IPasswordHasher<AppUser> hasher) : ICommandHandler<LoginCommand, UserDto?>
 {
     // Verifying against a throwaway hash when the email is unknown keeps the response time the same,
@@ -123,10 +161,15 @@ public static class AuthEndpoints
             if (user is null)
                 return Results.Problem("Incorrect email or password.", statusCode: StatusCodes.Status401Unauthorized);
 
-            var identity = new ClaimsIdentity(
-                [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Email, user.Email)],
-                CookieAuthenticationDefaults.AuthenticationScheme);
-            await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+            await SignIn(http, user);
+            return Results.Ok(user);
+        }).AllowAnonymous().RequireRateLimiting(AuthSetup.LoginRateLimit);
+
+        // Shares the login rate limit, so sign-up can't be used to spam accounts or probe emails quickly.
+        g.MapPost("/register", async (LoginInput input, IDispatcher d, HttpContext http, CancellationToken ct) =>
+        {
+            var user = await d.Send(new RegisterCommand(input.Email, input.Password), ct);
+            await SignIn(http, user);
             return Results.Ok(user);
         }).AllowAnonymous().RequireRateLimiting(AuthSetup.LoginRateLimit);
 
@@ -142,5 +185,13 @@ public static class AuthEndpoints
             var user = await d.Query(new GetUserQuery(id), ct);
             return user is null ? Results.Unauthorized() : Results.Ok(user);
         }).RequireAuthorization();
+    }
+
+    private static Task SignIn(HttpContext http, UserDto user)
+    {
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Email, user.Email)],
+            CookieAuthenticationDefaults.AuthenticationScheme);
+        return http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
     }
 }
