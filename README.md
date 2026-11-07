@@ -126,8 +126,10 @@ cd backend/LendingApp.Api && dotnet user-secrets remove "Admin:Password"
 
 ## Excel import / export (Loans page)
 
-- **Export Excel** downloads the loans currently shown (respects the status filter and search), with total owed, remaining balance and a total row.
-- **Import Excel → Download the template** gives a `Loans` sheet with dropdowns for term unit and status, plus a "How to fill" sheet.
-- **Import** is all-or-nothing: if any row is invalid, nothing is saved and every problem is listed by row. Borrowers are matched by exact name; unknown names become new borrowers. "Amount paid so far" is recorded as one payment.
+The workbook has **one sheet per borrower, named after the borrower**, with one loan per row.
+
+- **Export Excel** downloads the loans currently shown (respects the status filter and search). A `Summary` sheet comes first (each borrower's loans, total owed, total paid and remaining balance, linked to their sheet, plus the grand total); then each borrower's sheet, alphabetical, newest loan at the top, with a total row. Totals count only Active and Defaulted loans, like the Loans page.
+- **Import Excel → Download the template** gives a blank borrower sheet (rename it to the borrower; copy it for more borrowers) with dropdowns for term unit and status, plus a "How to fill" sheet.
+- **Import** reads every borrower sheet; the sheet name picks the borrower (exact name, or the shortened name Excel's 31-character sheet limit produced on export); unknown names become new borrowers. `Summary` and `How to fill` are skipped. It is all-or-nothing: if any row is invalid, nothing is saved and every problem is listed by sheet and row. "Amount paid so far" is recorded as one payment. Older single-sheet files with a "Borrower name" column still import.
 
 Note: `tools/import-excel` was a one-off for the original workbook and calls the API without signing in, so it no longer works as-is now that the API requires a session.

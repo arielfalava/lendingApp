@@ -46,9 +46,14 @@ export function ImportLoansDialog({ onClose, onImported }) {
           <ol className="steps">
             <li>
               <button type="button" className="link-btn" onClick={template}>Download the template</button>
-              {' '}and fill one loan per row. The "How to fill" sheet explains each column.
+              {' '}or use a file from Export Excel. Each borrower has their own sheet, named after them, with one loan per row.
+              The "How to fill" sheet explains each column.
             </li>
-            <li>Choose the filled file and import. If any row has a problem, nothing is imported and every problem is listed.</li>
+            <li>
+              Choose the file and import. Every borrower sheet is imported; a sheet name that matches an existing borrower
+              adds to them, otherwise a new borrower is created. The Summary sheet is skipped.
+            </li>
+            <li>If any row has a problem, nothing is imported and every problem is listed.</li>
           </ol>
           <label className="file-drop">
             <input
