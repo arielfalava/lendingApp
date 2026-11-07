@@ -63,6 +63,7 @@ var secured = app.MapGroup("").RequireAuthorization();
 secured.MapBorrowers();
 secured.MapLoans();
 secured.MapLoanExcel();
+secured.MapBorrowerExcel();
 secured.MapPayments();
 secured.MapHistory();
 secured.MapDashboard();

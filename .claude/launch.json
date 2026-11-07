@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "backend/LendingApp.Api"],
+      "port": 5080
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
       "runtimeArgs": ["frontend/node_modules/vite/bin/vite.js", "frontend"],

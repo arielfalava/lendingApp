@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { BorrowerForm, LoanForm } from '../components/forms'
 import { HistoryTimeline } from '../components/HistoryTimeline'
+import { ImportBorrowerDialog } from '../components/ImportBorrower'
 import { ErrorBanner, Loading } from '../components/ui'
 import { LoansTable } from './Loans'
 import { fmtDate, fmtMoney, fullName, useAsync } from '../util'
@@ -28,6 +29,11 @@ export default function BorrowerDetail() {
     }
   }
 
+  const exportExcel = async () => {
+    setActionError(null)
+    try { await api.exportBorrower(id) } catch (e) { setActionError(e) }
+  }
+
   if (borrower.error) return <ErrorBanner error={borrower.error} />
   if (!borrower.data) return <Loading />
   const b = borrower.data
@@ -40,6 +46,8 @@ export default function BorrowerDetail() {
           <h1>{fullName(b)}</h1>
         </div>
         <div className="actions">
+          <button className="btn" onClick={() => setModal('import')}>Import Excel</button>
+          <button className="btn" onClick={exportExcel} title="Borrower details, every loan and every payment">Export Excel</button>
           <button className="btn" onClick={() => setModal('edit')}>Edit</button>
           <button className="btn btn-danger" onClick={remove}>Delete</button>
           <button className="btn btn-primary" onClick={() => setModal('loan')}>New loan</button>
@@ -69,7 +77,10 @@ export default function BorrowerDetail() {
         <HistoryTimeline filters={{ borrowerId: id }} version={version} showLink />
       </section>
 
-      {modal === 'edit' && <BorrowerForm borrower={b} onClose={() => setModal(null)} onSaved={refresh} />}
+      {modal === 'import' && (
+        <ImportBorrowerDialog borrowerId={id} borrowerName={fullName(b)} onClose={() => setModal(null)} onImported={() => setVersion((v) => v + 1)} />
+      )}
+      {modal === 'edit' &&<BorrowerForm borrower={b} onClose={() => setModal(null)} onSaved={refresh} />}
       {modal === 'loan' && (
         <LoanForm defaultBorrowerId={id} onClose={() => setModal(null)} onSaved={(loanId) => navigate(`/loans/${loanId}`)} />
       )}

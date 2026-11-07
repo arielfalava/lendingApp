@@ -352,7 +352,7 @@ public class ImportLoansHandler(LendingDbContext db) : ICommandHandler<ImportLoa
     private static ValidationException Invalid(string message) =>
         new(new Dictionary<string, string[]> { ["file"] = [message] });
 
-    private static decimal? Number(IXLCell? cell)
+    internal static decimal? Number(IXLCell? cell)
     {
         if (cell is null || cell.IsEmpty()) return null;
         if (cell.Value.IsNumber) return (decimal)cell.Value.GetNumber();
@@ -362,7 +362,7 @@ public class ImportLoansHandler(LendingDbContext db) : ICommandHandler<ImportLoa
 
     private static readonly string[] DateFormats = ["yyyy-MM-dd", "M/d/yyyy", "MM/dd/yyyy", "d MMM yyyy", "MMM d, yyyy", "yyyy/M/d"];
 
-    private static DateOnly? Date(IXLCell? cell)
+    internal static DateOnly? Date(IXLCell? cell)
     {
         if (cell is null || cell.IsEmpty()) return null;
         if (cell.Value.IsDateTime) return DateOnly.FromDateTime(cell.Value.GetDateTime());

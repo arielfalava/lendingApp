@@ -84,6 +84,12 @@ export const api = {
     form.append('file', file)
     return send('POST', '/api/loans/import', { form }).then((r) => r.json())
   },
+  exportBorrower: (id) => download(`/api/borrowers/${id}/export`, 'borrower.xlsx'),
+  importBorrower: (id, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return send('POST', `/api/borrowers/${id}/import`, { form }).then((r) => r.json())
+  },
 
   // Commands
   createBorrower: (input) => request('POST', '/api/borrowers', input),
