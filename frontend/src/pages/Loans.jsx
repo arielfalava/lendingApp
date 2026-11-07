@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, LOAN_STATUSES } from '../api'
 import { LoanForm } from '../components/forms'
 import { Empty, ErrorBanner, Loading, StatusBadge } from '../components/ui'
-import { fmtDate, fmtMoney, rateLabel, statusLabel, useAsync } from '../util'
+import { countsAsOwed, fmtDate, fmtMoney, rateLabel, statusLabel, termLabel, useAsync } from '../util'
 
 export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans found.' }) {
   const navigate = useNavigate()
@@ -11,33 +11,42 @@ export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans 
   if (loans.loading && !loans.data) return <Loading />
   if (!loans.data?.length) return <Empty>{emptyText}</Empty>
 
+  const owed = loans.data.filter(countsAsOwed)
+  const remaining = owed.reduce((sum, l) => sum + l.balance, 0)
+
   return (
-    <table className="table">
-      <thead>
-        <tr>
-          {!hideBorrower && <th>Borrower</th>}
-          <th className="r">Principal</th><th className="r">Rate</th><th className="r">Term</th>
-          <th>Start</th><th className="r">Total owed</th><th className="r">Paid</th><th className="r">Balance</th><th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loans.data.map((l) => (
-          <tr key={l.id} className="clickable" onClick={() => navigate(`/loans/${l.id}`)}>
-            {!hideBorrower && (
-              <td><Link to={`/loans/${l.id}`} onClick={(e) => e.stopPropagation()}>{l.borrowerName}</Link></td>
-            )}
-            <td className="r num">{fmtMoney(l.principal)}</td>
-            <td className="r num">{rateLabel(l)}</td>
-            <td className="r num">{l.termMonths} mo</td>
-            <td>{fmtDate(l.startDate)}</td>
-            <td className="r num">{fmtMoney(l.totalDue)}</td>
-            <td className="r num">{fmtMoney(l.totalPaid)}</td>
-            <td className="r num">{fmtMoney(l.balance)}</td>
-            <td><StatusBadge status={l.status} /></td>
+    <>
+      <div className="table-summary">
+        <span className="muted">Remaining balance</span>
+        <strong className="num">{fmtMoney(remaining)}</strong>
+        <span className="muted">across {owed.length} active loan{owed.length === 1 ? '' : 's'}</span>
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            {!hideBorrower && <th>Borrower</th>}
+            <th className="r">Principal</th><th className="r">Rate</th><th className="r">Term</th>
+            <th>Start</th><th className="r">Paid</th><th className="r">Remaining balance</th><th>Status</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {loans.data.map((l) => (
+            <tr key={l.id} className="clickable" onClick={() => navigate(`/loans/${l.id}`)}>
+              {!hideBorrower && (
+                <td><Link to={`/loans/${l.id}`} onClick={(e) => e.stopPropagation()}>{l.borrowerName}</Link></td>
+              )}
+              <td className="r num">{fmtMoney(l.principal)}</td>
+              <td className="r num">{rateLabel(l)}</td>
+              <td className="r num">{termLabel(l, true)}</td>
+              <td>{fmtDate(l.startDate)}</td>
+              <td className="r num">{fmtMoney(l.totalPaid)}</td>
+              <td className="r num"><strong>{fmtMoney(l.balance)}</strong></td>
+              <td><StatusBadge status={l.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   )
 }
 

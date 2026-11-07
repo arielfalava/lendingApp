@@ -25,7 +25,7 @@ internal static class PaymentRules
     /// <summary>Validates against the balance excluding <paramref name="excludePaymentId"/> (the payment being edited).</summary>
     public static void Validate(Loan loan, PaymentInput i, Guid? excludePaymentId)
     {
-        var totalDue = LoanMath.TotalDue(loan);
+        var totalDue = loan.Terms().TotalDue;
         var paidElsewhere = loan.Payments.Where(p => p.Id != excludePaymentId).Sum(p => p.Amount);
         var remaining = totalDue - paidElsewhere;
 
@@ -39,7 +39,7 @@ internal static class PaymentRules
     /// <summary>Keeps the loan status consistent with its balance: fully paid ⇒ PaidOff, reopened ⇒ Active.</summary>
     public static void SyncStatus(Loan loan)
     {
-        var balance = LoanMath.TotalDue(loan) - loan.Payments.Sum(p => p.Amount);
+        var balance = loan.Terms().TotalDue - loan.Payments.Sum(p => p.Amount);
         if (balance <= 0 && loan.Status is LoanStatus.Active or LoanStatus.Defaulted)
             loan.Status = LoanStatus.PaidOff;
         else if (balance > 0 && loan.Status == LoanStatus.PaidOff)

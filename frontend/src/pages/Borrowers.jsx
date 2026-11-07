@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { BorrowerForm } from '../components/forms'
 import { Empty, ErrorBanner, Loading } from '../components/ui'
-import { fmtDate, fullName, useAsync } from '../util'
+import { fmtDate, fmtMoney, fullName, useAsync } from '../util'
 
 export default function Borrowers() {
   const [search, setSearch] = useState('')
@@ -29,7 +29,7 @@ export default function Borrowers() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Notes</th><th className="r">Loans</th><th className="r">Active</th><th>Since</th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Notes</th><th className="r">Loans</th><th className="r">Active</th><th className="r">Remaining balance</th><th>Since</th></tr>
             </thead>
             <tbody>
               {data.map((b) => (
@@ -39,6 +39,7 @@ export default function Borrowers() {
                   <td className="truncate" title={b.notes ?? ''}>{b.notes ?? '—'}</td>
                   <td className="r num">{b.loanCount}</td>
                   <td className="r num">{b.activeLoanCount}</td>
+                  <td className="r num"><strong>{fmtMoney(b.remainingBalance)}</strong></td>
                   <td>{fmtDate(b.createdAt)}</td>
                 </tr>
               ))}

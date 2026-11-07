@@ -5,7 +5,7 @@ import { BorrowerForm, LoanForm } from '../components/forms'
 import { HistoryTimeline } from '../components/HistoryTimeline'
 import { ErrorBanner, Loading } from '../components/ui'
 import { LoansTable } from './Loans'
-import { fmtDate, fullName, useAsync } from '../util'
+import { fmtDate, fmtMoney, fullName, useAsync } from '../util'
 
 export default function BorrowerDetail() {
   const { id } = useParams()
@@ -49,6 +49,8 @@ export default function BorrowerDetail() {
 
       <section className="card">
         <dl className="details">
+          <div><dt>Remaining balance</dt><dd className="num"><strong>{fmtMoney(b.remainingBalance)}</strong></dd></div>
+          <div><dt>Active loans</dt><dd className="num">{b.activeLoanCount}</dd></div>
           <div><dt>Email</dt><dd>{b.email ?? '—'}</dd></div>
           <div><dt>Phone</dt><dd>{b.phone ?? '—'}</dd></div>
           <div><dt>Address</dt><dd>{b.address ?? '—'}</dd></div>

@@ -16,7 +16,7 @@ export default function Dashboard() {
       {loading && !data ? <Loading /> : data && (
         <>
           <section className="stats">
-            <div className="stat"><span>Outstanding balance</span><strong className="num">{fmtMoney(data.outstandingBalance)}</strong></div>
+            <div className="stat"><span>Remaining balance</span><strong className="num">{fmtMoney(data.outstandingBalance)}</strong></div>
             <div className="stat"><span>Total lent</span><strong className="num">{fmtMoney(data.totalLent)}</strong></div>
             <div className="stat"><span>Total collected</span><strong className="num">{fmtMoney(data.totalCollected)}</strong></div>
             <div className="stat"><span>Borrowers</span><strong className="num">{data.borrowerCount}</strong></div>

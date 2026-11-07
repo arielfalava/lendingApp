@@ -4,7 +4,7 @@ import { api } from '../api'
 import { LoanForm, PaymentForm } from '../components/forms'
 import { HistoryTimeline } from '../components/HistoryTimeline'
 import { Empty, ErrorBanner, Loading, StatusBadge } from '../components/ui'
-import { fmtDate, fmtMoney, rateLabel, useAsync } from '../util'
+import { fmtDate, fmtMoney, perUnitLabel, rateLabel, termLabel, useAsync } from '../util'
 
 const PAYABLE = ['Active', 'Defaulted', 'PaidOff']
 
@@ -76,10 +76,10 @@ export default function LoanDetail() {
           <div style={{ width: `${pct}%` }} />
         </div>
         <dl className="details">
-          <div><dt>Balance</dt><dd className="num">{fmtMoney(loan.balance)}</dd></div>
-          <div><dt>Per month</dt><dd className="num">{fmtMoney(loan.monthlyPayment)}</dd></div>
+          <div><dt>Remaining balance</dt><dd className="num"><strong>{fmtMoney(loan.balance)}</strong></dd></div>
+          <div><dt>{perUnitLabel(loan.termUnit)}</dt><dd className="num">{fmtMoney(loan.installment)}</dd></div>
           <div><dt>Interest rate</dt><dd className="num">{rateLabel(loan)}</dd></div>
-          <div><dt>Term</dt><dd className="num">{loan.termMonths} months</dd></div>
+          <div><dt>Term</dt><dd className="num">{termLabel(loan)}</dd></div>
           <div><dt>Start date</dt><dd>{fmtDate(loan.startDate)}</dd></div>
           <div><dt>Maturity date</dt><dd>{fmtDate(loan.maturityDate)}</dd></div>
           <div className="span-all"><dt>Notes</dt><dd>{loan.notes ?? '—'}</dd></div>

@@ -297,7 +297,7 @@ for (const p of people) {
   for (const l of p.loans) {
     const { id: loanId } = await call('POST', '/api/loans', {
       borrowerId, principal: round2(l.utang / 1.2), interestRate: FLAT_RATE, interestType: 'Flat',
-      termMonths: l.termMonths, startDate: l.date, status: 'Active', notes: l.notes,
+      term: l.termMonths, termUnit: 'Months', startDate: l.date, status: 'Active', notes: l.notes,
     })
     const { loan } = await call('GET', `/api/loans/${loanId}`)
     if (Math.abs(loan.totalDue - l.utang) > 0.005)

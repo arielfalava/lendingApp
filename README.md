@@ -67,14 +67,14 @@ OpenAPI document: http://localhost:5080/openapi/v1.json (Development).
 ## Business rules
 
 - Borrower email must be unique; a borrower with loans can't be deleted.
-- Loans use a fixed monthly installment (standard amortization).
+- A loan's term is a number of weeks or months; the installment is due each week or month.
 - Payments are allowed on Active/Defaulted loans and can't exceed the balance.
 - Paying the balance in full sets the loan to **PaidOff**; deleting/reducing a payment reopens it to **Active**.
 - Deleting a loan deletes its payments (each recorded in history).
 
 ## Interest types
 
-- **Flat** — the rate is charged once: total owed = principal × (1 + rate%). E.g. 2,500 at 20% flat → 3,000.
+- **Flat** (the only type shown in the UI for now) — the rate is charged once: total owed = principal × (1 + rate%). E.g. 2,500 at 20% → 3,000.
 - **Amortized** — annual rate, repaid in equal monthly installments.
 
 ## Importing the Excel workbook

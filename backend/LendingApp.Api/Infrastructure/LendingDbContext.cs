@@ -43,6 +43,7 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options) : DbCo
         {
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.InterestType).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.TermUnit).HasConversion<string>().HasMaxLength(10);
             e.HasOne(x => x.Borrower).WithMany(x => x.Loans).HasForeignKey(x => x.BorrowerId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.Status);

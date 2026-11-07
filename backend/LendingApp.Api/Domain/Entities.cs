@@ -37,6 +37,13 @@ public enum InterestType
     Flat
 }
 
+/// <summary>What one unit of <see cref="Loan.Term"/> means, and how often installments fall due.</summary>
+public enum TermUnit
+{
+    Weeks,
+    Months
+}
+
 public class Loan : IAuditable
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -46,8 +53,10 @@ public class Loan : IAuditable
     public decimal Principal { get; set; }
     /// <summary>Interest rate in percent. Per year for <see cref="InterestType.Amortized"/>; one-time for <see cref="InterestType.Flat"/>.</summary>
     public decimal InterestRate { get; set; }
-    public InterestType InterestType { get; set; } = InterestType.Amortized;
-    public int TermMonths { get; set; }
+    public InterestType InterestType { get; set; } = InterestType.Flat;
+    /// <summary>Number of installments, each one <see cref="TermUnit"/> apart.</summary>
+    public int Term { get; set; }
+    public TermUnit TermUnit { get; set; } = TermUnit.Months;
     public DateOnly StartDate { get; set; }
     public LoanStatus Status { get; set; } = LoanStatus.Pending;
     public string? Notes { get; set; }

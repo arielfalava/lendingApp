@@ -6,7 +6,7 @@ import { Empty, ErrorBanner, Loading } from './ui'
 
 const FIELD_LABELS = {
   BorrowerId: 'Borrower', FirstName: 'First name', LastName: 'Last name', InterestRate: 'Interest %',
-  InterestType: 'Interest type', TermMonths: 'Term (months)', StartDate: 'Start date', PaidOn: 'Paid on', LoanId: 'Loan',
+  InterestType: 'Interest type', TermMonths: 'Term (months)', Term: 'Term', TermUnit: 'Term unit', StartDate: 'Start date', PaidOn: 'Paid on', LoanId: 'Loan',
 }
 
 function formatValue(field, value) {

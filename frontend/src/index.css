@@ -203,3 +203,9 @@ h1 .badge { font-size: 0.8rem; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 14px; }
 
 .table td.truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+
+.input-group { display: flex; gap: 6px; }
+.input-group input { flex: 1; min-width: 0; }
+.input-group select { width: auto; }
+.table-summary { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.table-summary strong { font-size: 1.35rem; font-weight: 650; }

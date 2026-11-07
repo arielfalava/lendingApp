@@ -18,19 +18,24 @@ public class GetDashboardHandler(LendingDbContext db) : IQueryHandler<GetDashboa
     {
         var borrowers = await db.Borrowers.CountAsync(ct);
         var loans = await db.Loans.AsNoTracking()
-            .Select(l => new { l.Principal, l.InterestRate, l.InterestType, l.TermMonths, l.Status, Paid = l.Payments.Select(p => p.Amount).ToList() })
+            .Select(l => new
+            {
+                Terms = new LoanTerms(l.Principal, l.InterestRate, l.InterestType, l.Term, l.TermUnit),
+                l.Status,
+                Paid = l.Payments.Select(p => p.Amount).ToList()
+            })
             .ToListAsync(ct);
 
-        var lending = loans.Where(l => l.Status is not (LoanStatus.Pending or LoanStatus.Cancelled)).ToList();
-        var outstanding = lending
-            .Where(l => l.Status is LoanStatus.Active or LoanStatus.Defaulted)
-            .Sum(l => Math.Max(0, LoanMath.TotalDue(l.Principal, l.InterestRate, l.TermMonths, l.InterestType) - l.Paid.Sum()));
+        var released = loans.Where(l => l.Status is not (LoanStatus.Pending or LoanStatus.Cancelled)).ToList();
+        var outstanding = loans
+            .Where(l => LoanMath.CountsAsOwed(l.Status))
+            .Sum(l => l.Terms.Balance(l.Paid.Sum()));
 
         return new DashboardDto(
             borrowers,
             loans.Count,
             Enum.GetNames<LoanStatus>().ToDictionary(s => s, s => loans.Count(l => l.Status.ToString() == s)),
-            lending.Sum(l => l.Principal),
+            released.Sum(l => l.Terms.Principal),
             loans.Sum(l => l.Paid.Sum()),
             outstanding);
     }

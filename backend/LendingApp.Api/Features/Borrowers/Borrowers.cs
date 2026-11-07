@@ -1,5 +1,6 @@
 using LendingApp.Api.Cqrs;
 using LendingApp.Api.Domain;
+using LendingApp.Api.Features.Loans;
 using LendingApp.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,7 @@ namespace LendingApp.Api.Features.Borrowers;
 
 public record BorrowerDto(
     Guid Id, string FirstName, string LastName, string? Email, string? Phone, string? Address, string? Notes,
-    DateTime CreatedAt, int LoanCount, int ActiveLoanCount);
+    DateTime CreatedAt, int LoanCount, int ActiveLoanCount, decimal RemainingBalance);
 
 public record BorrowerInput(
     string FirstName, string? LastName, string? Email, string? Phone, string? Address, string? Notes = null);
@@ -104,25 +105,42 @@ public class GetBorrowersHandler(LendingDbContext db) : IQueryHandler<GetBorrowe
                                      || (b.Email != null && b.Email.ToLower().Contains(s))
                                      || (b.Notes != null && b.Notes.ToLower().Contains(s)));
         }
-        return await query
-            .OrderBy(b => b.FirstName).ThenBy(b => b.LastName)
-            .Select(BorrowerProjection.ToDto)
-            .ToListAsync(ct);
+        var rows = await BorrowerReadModel.Rows(query.OrderBy(b => b.FirstName).ThenBy(b => b.LastName)).ToListAsync(ct);
+        return rows.Select(BorrowerReadModel.ToDto).ToList();
     }
 }
 
 public class GetBorrowerHandler(LendingDbContext db) : IQueryHandler<GetBorrowerQuery, BorrowerDto>
 {
     public async Task<BorrowerDto> Handle(GetBorrowerQuery q, CancellationToken ct)
-        => await db.Borrowers.AsNoTracking().Where(b => b.Id == q.Id).Select(BorrowerProjection.ToDto).FirstOrDefaultAsync(ct)
-           ?? throw new NotFoundException("Borrower", q.Id);
+    {
+        var row = await BorrowerReadModel.Rows(db.Borrowers.AsNoTracking().Where(b => b.Id == q.Id)).FirstOrDefaultAsync(ct)
+                  ?? throw new NotFoundException("Borrower", q.Id);
+        return BorrowerReadModel.ToDto(row);
+    }
 }
 
-internal static class BorrowerProjection
+internal static class BorrowerReadModel
 {
-    public static readonly System.Linq.Expressions.Expression<Func<Borrower, BorrowerDto>> ToDto = b => new BorrowerDto(
-        b.Id, b.FirstName, b.LastName, b.Email, b.Phone, b.Address, b.Notes, b.CreatedAt,
-        b.Loans.Count, b.Loans.Count(l => l.Status == LoanStatus.Active));
+    public sealed record LoanRow(LoanTerms Terms, LoanStatus Status, List<decimal> Paid);
+    public sealed record Row(Borrower B, List<LoanRow> Loans);
+
+    // Balances need the loan math, and SQLite can't sum decimals, so loan figures are pulled and totalled in memory.
+    public static IQueryable<Row> Rows(IQueryable<Borrower> borrowers) => borrowers.Select(b => new Row(
+        b,
+        b.Loans.Select(l => new LoanRow(
+            new LoanTerms(l.Principal, l.InterestRate, l.InterestType, l.Term, l.TermUnit),
+            l.Status,
+            l.Payments.Select(p => p.Amount).ToList())).ToList()));
+
+    public static BorrowerDto ToDto(Row r)
+    {
+        var owed = r.Loans.Where(l => LoanMath.CountsAsOwed(l.Status)).ToList();
+        var b = r.B;
+        return new BorrowerDto(
+            b.Id, b.FirstName, b.LastName, b.Email, b.Phone, b.Address, b.Notes, b.CreatedAt,
+            r.Loans.Count, owed.Count, owed.Sum(l => l.Terms.Balance(l.Paid.Sum())));
+    }
 }
 
 // ───────────── Endpoints ─────────────
