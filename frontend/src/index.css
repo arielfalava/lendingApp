@@ -209,3 +209,4 @@ h1 .badge { font-size: 0.8rem; }
 .input-group select { width: auto; }
 .table-summary { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .table-summary strong { font-size: 1.35rem; font-weight: 650; }
+.input-group select.grow { flex: 1; width: 100%; }

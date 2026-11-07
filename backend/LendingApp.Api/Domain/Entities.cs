@@ -41,7 +41,10 @@ public enum InterestType
 public enum TermUnit
 {
     Weeks,
-    Months
+    Months,
+    Days,
+    /// <summary>No schedule or due date: the borrower repays whenever they can. <see cref="Loan.Term"/> is 0.</summary>
+    NoDeadline
 }
 
 public class Loan : IAuditable

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { api, LOAN_STATUSES } from '../api'
-import { fmtMoney, fullName, loanTotals, perUnitLabel, statusLabel, today, useAsync } from '../util'
+import { fmtMoney, fullName, loanTotals, NO_DEADLINE, perUnitLabel, statusLabel, today, useAsync } from '../util'
 import { ErrorBanner, Field, Modal, useForm } from './ui'
 
 function FormActions({ saving, onCancel, label = 'Save' }) {
@@ -60,7 +60,7 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
       principal: loan?.principal ?? '',
       interestRate: loan?.interestRate ?? 20,
       interestType: loan?.interestType ?? 'Flat',
-      term: loan?.term ?? 8,
+      term: loan?.term || 8,
       termUnit: loan?.termUnit ?? 'Weeks',
       startDate: loan?.startDate ?? today(),
       status: loan?.status ?? 'Active',
@@ -74,7 +74,7 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
         newBorrowerName: isNew ? v.newBorrowerName : null,
         principal: Number(v.principal) || 0,
         interestRate: Number(v.interestRate) || 0,
-        term: parseInt(v.term, 10) || 0,
+        term: v.termUnit === NO_DEADLINE ? 0 : parseInt(v.term, 10) || 0,
       }
       const res = loan ? await api.updateLoan(loan.id, input) : await api.createLoan(input)
       onSaved(res?.id ?? loan.id)
@@ -88,6 +88,7 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
     [principal, interestRate, term, termUnit, interestType],
   )
   const isNewBorrower = borrowerId === NEW_BORROWER
+  const noDeadline = termUnit === NO_DEADLINE
 
   return (
     <Modal title={loan ? 'Edit loan' : 'New loan'} onClose={onClose}>
@@ -129,12 +130,20 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
           </Field>
         </div>
         <div className="grid-2">
-          <Field label="Term" error={f.errors.term ?? f.errors.termUnit}>
+          <Field
+            label="Term"
+            error={f.errors.term ?? f.errors.termUnit}
+            hint={noDeadline ? 'Repaid whenever the borrower can. No installments or due date.' : undefined}
+          >
             <div className="input-group">
-              <input type="number" min="1" step="1" inputMode="numeric" aria-label="Number of payments" {...f.bind('term')} />
-              <select aria-label="Term unit" {...f.bind('termUnit')}>
+              {!noDeadline && (
+                <input type="number" min="1" step="1" inputMode="numeric" aria-label="Number of payments" {...f.bind('term')} />
+              )}
+              <select aria-label="Term unit" {...f.bind('termUnit')} className={noDeadline ? 'grow' : undefined}>
+                <option value="Days">Days</option>
                 <option value="Weeks">Weeks</option>
                 <option value="Months">Months</option>
+                <option value={NO_DEADLINE}>No specific deadline</option>
               </select>
             </div>
           </Field>
@@ -150,7 +159,9 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
         <Field label="Notes" error={f.errors.notes}><textarea rows={2} {...f.bind('notes')} /></Field>
         {preview && (
           <div className="preview">
-            <div><span>{perUnitLabel(termUnit)}</span><strong className="num">{fmtMoney(preview.installment)}</strong></div>
+            {preview.installment != null && (
+              <div><span>{perUnitLabel(termUnit)}</span><strong className="num">{fmtMoney(preview.installment)}</strong></div>
+            )}
             <div><span>Total repayable</span><strong className="num">{fmtMoney(preview.total)}</strong></div>
             <div><span>Total interest</span><strong className="num">{fmtMoney(preview.interest)}</strong></div>
           </div>
@@ -162,7 +173,9 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
 }
 
 export function PaymentForm({ loan, payment, onClose, onSaved }) {
-  const suggested = Math.min(loan.installment, loan.balance + (payment?.amount ?? 0))
+  // No-deadline loans have no installment, so suggest the full balance instead.
+  const due = loan.balance + (payment?.amount ?? 0)
+  const suggested = loan.installment == null ? due : Math.min(loan.installment, due)
   const f = useForm(
     {
       amount: payment?.amount ?? (suggested > 0 ? suggested.toFixed(2) : ''),

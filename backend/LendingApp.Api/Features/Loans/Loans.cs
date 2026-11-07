@@ -10,8 +10,8 @@ namespace LendingApp.Api.Features.Loans;
 public record LoanSummaryDto(
     Guid Id, Guid BorrowerId, string BorrowerName,
     decimal Principal, decimal InterestRate, InterestType InterestType, int Term, TermUnit TermUnit,
-    DateOnly StartDate, DateOnly MaturityDate, LoanStatus Status, string? Notes, DateTime CreatedAt,
-    decimal Installment, decimal TotalDue, decimal TotalPaid, decimal Balance, int PaymentCount);
+    DateOnly StartDate, DateOnly? MaturityDate, LoanStatus Status, string? Notes, DateTime CreatedAt,
+    decimal? Installment, decimal TotalDue, decimal TotalPaid, decimal Balance, int PaymentCount);
 
 public record PaymentDto(Guid Id, Guid LoanId, decimal Amount, DateOnly PaidOn, string? Note, DateTime CreatedAt);
 
@@ -37,14 +37,17 @@ internal static class LoanRules
         var newName = i.NewBorrowerName?.Trim();
         var borrowerOk = !string.IsNullOrEmpty(newName)
             || (i.BorrowerId is { } id && await db.Borrowers.AnyAsync(b => b.Id == id, ct));
-        var maxTerm = i.TermUnit == TermUnit.Weeks ? 520 : 600;
+        var noDeadline = i.TermUnit == TermUnit.NoDeadline;
+        // About 10 years in days or weeks; 50 years in months.
+        var maxTerm = i.TermUnit switch { TermUnit.Days => 3650, TermUnit.Weeks => 520, _ => 600 };
 
         new Rules()
             .Require(borrowerOk, "borrowerId", "Select a borrower or enter a new borrower's name.")
             .Require(i.Principal > 0, "principal", "Principal must be greater than zero.")
             .Require(i.InterestRate is >= 0 and <= 100, "interestRate", "Interest rate must be between 0 and 100%.")
-            .Require(Enum.IsDefined(i.TermUnit), "termUnit", "Choose weeks or months.")
-            .Require(i.Term >= 1 && i.Term <= maxTerm, "term", $"Term must be between 1 and {maxTerm} {i.TermUnit.ToString().ToLowerInvariant()}.")
+            .Require(Enum.IsDefined(i.TermUnit), "termUnit", "Choose days, weeks, months or no specific deadline.")
+            .Require(noDeadline || (i.Term >= 1 && i.Term <= maxTerm), "term",
+                $"Term must be between 1 and {maxTerm} {i.TermUnit.ToString().ToLowerInvariant()}.")
             .Require(Enum.IsDefined(i.Status), "status", "Unknown status.")
             .Require(Enum.IsDefined(i.InterestType), "interestType", "Unknown interest type.")
             .ThrowIfInvalid();
@@ -68,7 +71,7 @@ internal static class LoanRules
         l.Principal = Math.Round(i.Principal, 2);
         l.InterestRate = i.InterestRate;
         l.InterestType = i.InterestType;
-        l.Term = i.Term;
+        l.Term = i.TermUnit == TermUnit.NoDeadline ? 0 : i.Term;
         l.TermUnit = i.TermUnit;
         l.StartDate = i.StartDate;
         l.Status = i.Status;

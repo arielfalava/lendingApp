@@ -77,11 +77,11 @@ export default function LoanDetail() {
         </div>
         <dl className="details">
           <div><dt>Remaining balance</dt><dd className="num"><strong>{fmtMoney(loan.balance)}</strong></dd></div>
-          <div><dt>{perUnitLabel(loan.termUnit)}</dt><dd className="num">{fmtMoney(loan.installment)}</dd></div>
+          {loan.installment != null && <div><dt>{perUnitLabel(loan.termUnit)}</dt><dd className="num">{fmtMoney(loan.installment)}</dd></div>}
           <div><dt>Interest rate</dt><dd className="num">{rateLabel(loan)}</dd></div>
           <div><dt>Term</dt><dd className="num">{termLabel(loan)}</dd></div>
           <div><dt>Start date</dt><dd>{fmtDate(loan.startDate)}</dd></div>
-          <div><dt>Maturity date</dt><dd>{fmtDate(loan.maturityDate)}</dd></div>
+          <div><dt>Maturity date</dt><dd>{loan.maturityDate ? fmtDate(loan.maturityDate) : 'No deadline'}</dd></div>
           <div className="span-all"><dt>Notes</dt><dd>{loan.notes ?? '—'}</dd></div>
         </dl>
       </section>

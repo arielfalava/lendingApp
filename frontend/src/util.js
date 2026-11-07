@@ -21,9 +21,17 @@ export const rateLabel = (loan) => `${loan.interestRate}%`
 
 export const fullName = (b) => `${b.firstName} ${b.lastName ?? ''}`.trim()
 
-export const TERM_UNITS = { Weeks: { one: 'week', many: 'weeks', short: 'wk' }, Months: { one: 'month', many: 'months', short: 'mo' } }
+export const TERM_UNITS = {
+  Days: { one: 'day', many: 'days', short: 'd', perYear: 365 },
+  Weeks: { one: 'week', many: 'weeks', short: 'wk', perYear: 52 },
+  Months: { one: 'month', many: 'months', short: 'mo', perYear: 12 },
+}
+
+/** Term unit for loans repaid whenever the borrower can: no installments, no due date. */
+export const NO_DEADLINE = 'NoDeadline'
 
 export const termLabel = (loan, short = false) => {
+  if (loan.termUnit === NO_DEADLINE) return short ? 'No deadline' : 'No specific deadline'
   const u = TERM_UNITS[loan.termUnit] ?? TERM_UNITS.Months
   return short ? `${loan.term} ${u.short}` : `${loan.term} ${loan.term === 1 ? u.one : u.many}`
 }
@@ -37,14 +45,20 @@ export const countsAsOwed = (loan) => loan.status === 'Active' || loan.status ==
 /** Mirrors the API's LoanTerms so forms can preview totals before saving. */
 export function loanTotals(principal, rate, term, termUnit, interestType) {
   const p = Number(principal), r = Number(rate), n = parseInt(term, 10)
-  if (!(p > 0) || !(n > 0) || !(r >= 0)) return null
   const round = (x) => Math.round(x * 100) / 100
+  if (termUnit === NO_DEADLINE) {
+    // Nothing to spread over, so interest is charged once and there's no per-period amount.
+    if (!(p > 0) || !(r >= 0)) return null
+    const total = round(p * (1 + r / 100))
+    return { installment: null, total, interest: total - p }
+  }
+  if (!(p > 0) || !(n > 0) || !(r >= 0)) return null
   let total, installment
   if (interestType === 'Flat' || r === 0) {
     total = interestType === 'Flat' ? round(p * (1 + r / 100)) : p
     installment = round(total / n)
   } else {
-    const m = r / 100 / (termUnit === 'Weeks' ? 52 : 12)
+    const m = r / 100 / (TERM_UNITS[termUnit] ?? TERM_UNITS.Months).perYear
     installment = round((p * m) / (1 - Math.pow(1 + m, -n)))
     total = installment * n
   }

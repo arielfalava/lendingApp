@@ -5,23 +5,27 @@ namespace LendingApp.Api.Features.Loans;
 /// <summary>The figures that decide what a loan costs and how it's repaid.</summary>
 public readonly record struct LoanTerms(decimal Principal, decimal Rate, InterestType Type, int Term, TermUnit Unit)
 {
-    private int PeriodsPerYear => Unit == TermUnit.Weeks ? 52 : 12;
+    private int PeriodsPerYear => Unit switch { TermUnit.Days => 365, TermUnit.Weeks => 52, _ => 12 };
+
+    public bool HasDeadline => Unit != TermUnit.NoDeadline;
 
     public decimal TotalDue
     {
         get
         {
-            if (Type == InterestType.Flat) return Math.Round(Principal * (1 + Rate / 100m), 2);
+            // With no schedule there's nothing to amortize over, so interest is always charged once (flat).
+            if (Type == InterestType.Flat || !HasDeadline) return Math.Round(Principal * (1 + Rate / 100m), 2);
             if (Rate == 0) return Principal;
-            return Installment * Term;
+            return Installment!.Value * Term;
         }
     }
 
-    /// <summary>Amount due each week or month.</summary>
-    public decimal Installment
+    /// <summary>Amount due each day, week or month; null when the loan has no deadline.</summary>
+    public decimal? Installment
     {
         get
         {
+            if (!HasDeadline) return null;
             if (Term <= 0) return 0;
             if (Type == InterestType.Flat || Rate == 0) return Math.Round(TotalDue / Term, 2);
 
@@ -32,8 +36,14 @@ public readonly record struct LoanTerms(decimal Principal, decimal Rate, Interes
         }
     }
 
-    public DateOnly MaturityDate(DateOnly start) =>
-        Unit == TermUnit.Weeks ? start.AddDays(7 * Term) : start.AddMonths(Term);
+    /// <summary>When the last installment falls due; null when the loan has no deadline.</summary>
+    public DateOnly? MaturityDate(DateOnly start) => Unit switch
+    {
+        TermUnit.NoDeadline => null,
+        TermUnit.Days => start.AddDays(Term),
+        TermUnit.Weeks => start.AddDays(7 * Term),
+        _ => start.AddMonths(Term)
+    };
 
     public decimal Balance(decimal paid) => Math.Max(0, TotalDue - paid);
 }
