@@ -41,6 +41,8 @@ public class LendingDbContext(DbContextOptions<LendingDbContext> options, ICurre
             e.Property(x => x.Id).ValueGeneratedNever();
             e.Property(x => x.Email).HasMaxLength(200);
             e.HasIndex(x => x.Email).IsUnique();
+            e.Property(x => x.GoogleSubject).HasMaxLength(64);
+            e.HasIndex(x => x.GoogleSubject).IsUnique(); // NULL for password-only accounts
         });
 
         b.Entity<Borrower>(e =>

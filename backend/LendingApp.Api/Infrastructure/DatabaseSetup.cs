@@ -48,6 +48,11 @@ public static class DatabaseSetup
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_Email" ON "Users" ("Email");
             """);
 
+        // 2026-11: Sign in with Google.
+        if (!(await Columns(db, "Users")).Contains("GoogleSubject"))
+            await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Users" ADD COLUMN "GoogleSubject" TEXT NULL;""");
+        await db.Database.ExecuteSqlRawAsync("""CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_GoogleSubject" ON "Users" ("GoogleSubject");""");
+
         // 2026-11: each user has their own data. Rows from before this get an owner in AssignUnownedDataAsync.
         foreach (var table in OwnedTables)
         {

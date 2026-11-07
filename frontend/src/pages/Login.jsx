@@ -1,41 +1,75 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 
-/** Sign-in and Create account share one card; each account only ever sees its own borrowers and loans. */
+const GIS_SRC = 'https://accounts.google.com/gsi/client'
+
+/** Loads Google Identity Services once and resolves with window.google.accounts.id. */
+function loadGoogleIdentity() {
+  if (window.google?.accounts?.id) return Promise.resolve(window.google.accounts.id)
+  return new Promise((resolve, reject) => {
+    let script = document.querySelector(`script[src="${GIS_SRC}"]`)
+    if (!script) {
+      script = Object.assign(document.createElement('script'), { src: GIS_SRC, async: true, defer: true })
+      document.head.appendChild(script)
+    }
+    script.addEventListener('load', () => resolve(window.google.accounts.id))
+    script.addEventListener('error', () => reject(new Error("Couldn't load Google sign-in. Check your internet connection.")))
+  })
+}
+
+/**
+ * "Continue with Google" signs in, or creates an account the first time a Gmail address is used.
+ * Each account only ever sees its own borrowers and loans.
+ * Email + password stays available for accounts that have a password (the original admin account).
+ */
 export default function Login({ onLogin }) {
-  const [mode, setMode] = useState('signin') // 'signin' | 'register'
+  const buttonRef = useRef(null)
+  const [googleState, setGoogleState] = useState('loading') // loading | ready | unavailable
+  const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
   const [error, setError] = useState(null)
-  const [fieldErrors, setFieldErrors] = useState({})
   const [busy, setBusy] = useState(false)
-  const registering = mode === 'register'
 
-  const switchMode = (next) => {
-    setMode(next)
-    setError(null)
-    setFieldErrors({})
-    setPassword('')
-    setConfirm('')
-  }
+  const explain = (err) =>
+    err.status === 429 ? 'Too many attempts. Wait a few minutes and try again.' : err.fieldErrors?.google ?? err.message
 
-  const submit = async (e) => {
+  useEffect(() => {
+    let cancelled = false
+    api.authConfig()
+      .then(async ({ googleClientId }) => {
+        if (!googleClientId) { setGoogleState('unavailable'); setShowPassword(true); return }
+        const gis = await loadGoogleIdentity()
+        if (cancelled) return
+        gis.initialize({
+          client_id: googleClientId,
+          ux_mode: 'popup',
+          callback: async ({ credential }) => {
+            setBusy(true)
+            setError(null)
+            try { onLogin(await api.googleSignIn(credential)) } catch (err) { setError(explain(err)) } finally { setBusy(false) }
+          },
+        })
+        const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        gis.renderButton(buttonRef.current, {
+          type: 'standard', theme: dark ? 'filled_black' : 'outline', size: 'large',
+          text: 'continue_with', shape: 'rectangular', logo_alignment: 'left', width: 320,
+        })
+        setGoogleState('ready')
+      })
+      .catch((err) => { if (!cancelled) { setGoogleState('unavailable'); setShowPassword(true); setError(err.message) } })
+    return () => { cancelled = true }
+  }, [onLogin])
+
+  const submitPassword = async (e) => {
     e.preventDefault()
-    setError(null)
-    setFieldErrors({})
-    if (registering && password !== confirm) {
-      setFieldErrors({ confirm: "Passwords don't match." })
-      return
-    }
     setBusy(true)
+    setError(null)
     try {
-      onLogin(registering ? await api.register(email, password) : await api.login(email, password))
+      onLogin(await api.login(email, password))
     } catch (err) {
-      if (err.status === 429) setError('Too many attempts. Wait a few minutes and try again.')
-      else if (Object.keys(err.fieldErrors ?? {}).length) setFieldErrors(err.fieldErrors)
-      else setError(err.message)
-      if (!registering) setPassword('')
+      setError(explain(err))
+      setPassword('')
     } finally {
       setBusy(false)
     }
@@ -43,62 +77,47 @@ export default function Login({ onLogin }) {
 
   return (
     <main className="login-page">
-      <form className="login-card" onSubmit={submit} noValidate>
+      <div className="login-card">
         <div className="brand login-brand">
           <span className="brand-mark" aria-hidden>L</span>
           LendingApp
         </div>
-        <h1>{registering ? 'Create account' : 'Sign in'}</h1>
-        {registering && <p className="muted login-lead">Use your Gmail address. Your borrowers and loans are visible only to you.</p>}
+        <h1>Sign in</h1>
+        <p className="muted login-lead">
+          Use your Gmail account. New here? Continuing with Google creates your account, and your borrowers and loans are visible only to you.
+        </p>
         {error && <div className="banner banner-error" role="alert">{error}</div>}
 
-        <label className={`field ${fieldErrors.email ? 'has-error' : ''}`}>
-          <span className="field-label">{registering ? 'Gmail address' : 'Email'}</span>
-          <input
-            type="email"
-            autoComplete={registering ? 'email' : 'username'}
-            placeholder={registering ? 'name@gmail.com' : undefined}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoFocus
-            required
-          />
-          {fieldErrors.email && <span className="field-error">{fieldErrors.email}</span>}
-        </label>
+        <div className="google-slot" aria-busy={googleState === 'loading' || busy}>
+          <div ref={buttonRef} hidden={googleState !== 'ready'} />
+          {googleState === 'loading' && <div className="muted">Loading Google sign-in…</div>}
+          {googleState === 'unavailable' && !error && (
+            <div className="muted">Google sign-in isn't set up on this server yet.</div>
+          )}
+          {busy && <div className="muted">Signing in…</div>}
+        </div>
 
-        <label className={`field ${fieldErrors.password ? 'has-error' : ''}`}>
-          <span className="field-label">Password</span>
-          <input
-            type="password"
-            autoComplete={registering ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          {fieldErrors.password
-            ? <span className="field-error">{fieldErrors.password}</span>
-            : registering && <span className="field-hint">At least 8 characters, with a letter and a number.</span>}
-        </label>
-
-        {registering && (
-          <label className={`field ${fieldErrors.confirm ? 'has-error' : ''}`}>
-            <span className="field-label">Confirm password</span>
-            <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-            {fieldErrors.confirm && <span className="field-error">{fieldErrors.confirm}</span>}
-          </label>
+        {googleState === 'ready' && !showPassword && (
+          <p className="login-switch muted">
+            <button type="button" className="link-btn" onClick={() => setShowPassword(true)}>Sign in with email and password instead</button>
+          </p>
         )}
 
-        <button type="submit" className="btn btn-primary login-submit" disabled={busy}>
-          {busy ? (registering ? 'Creating account…' : 'Signing in…') : registering ? 'Create account' : 'Sign in'}
-        </button>
-
-        <p className="login-switch muted">
-          {registering ? 'Already have an account?' : 'New here?'}{' '}
-          <button type="button" className="link-btn" onClick={() => switchMode(registering ? 'signin' : 'register')}>
-            {registering ? 'Sign in' : 'Create an account'}
-          </button>
-        </p>
-      </form>
+        {showPassword && (
+          <form onSubmit={submitPassword} className="password-signin">
+            {googleState === 'ready' && <div className="divider"><span>or</span></div>}
+            <label className="field">
+              <span className="field-label">Email</span>
+              <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </label>
+            <label className="field">
+              <span className="field-label">Password</span>
+              <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </label>
+            <button type="submit" className="btn btn-primary login-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          </form>
+        )}
+      </div>
     </main>
   )
 }

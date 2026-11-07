@@ -64,7 +64,8 @@ export const api = {
   // Session
   me: () => request('GET', '/api/auth/me'),
   login: (email, password) => request('POST', '/api/auth/login', { email, password }),
-  register: (email, password) => request('POST', '/api/auth/register', { email, password }),
+  authConfig: () => request('GET', '/api/auth/config'),
+  googleSignIn: (credential) => request('POST', '/api/auth/google', { credential }),
   logout: () => request('POST', '/api/auth/logout'),
 
   // Queries

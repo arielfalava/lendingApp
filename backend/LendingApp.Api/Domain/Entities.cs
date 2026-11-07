@@ -88,12 +88,15 @@ public class Payment : IAuditable, IOwned
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>Someone who can sign in. Only a salted hash of the password is stored.</summary>
+/// <summary>Someone who can sign in, with Google and/or a password. Only a salted hash of a password is stored.</summary>
 public class AppUser
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Email { get; set; } = "";
+    /// <summary>Empty for accounts that only sign in with Google.</summary>
     public string PasswordHash { get; set; } = "";
+    /// <summary>Google's stable account id ("sub"), set the first time the user signs in with Google.</summary>
+    public string? GoogleSubject { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

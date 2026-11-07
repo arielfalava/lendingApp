@@ -7,3 +7,6 @@ node_modules/
 backend/LendingApp.Api/wwwroot/
 .vs/
 *.user
+
+# Google OAuth downloads contain the client secret: never commit them
+client_secret_*.json

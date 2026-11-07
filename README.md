@@ -99,7 +99,14 @@ The first run is a dry run that prints every loan, payment and balance; `--apply
 
 Every page and `/api` endpoint (except `/api/auth/*`) requires signing in. **Each account has its own separate data**: borrowers, loans, payments and history are stored with an owner, and every database query is filtered to the signed-in user (EF Core global query filters), so other users' records are simply not found.
 
-Anyone can **create an account** with a Gmail address (`name@gmail.com`) and a password (8+ characters, with a letter and a number); new accounts start empty. Addresses aren't verified by email, so a person could register a Gmail address they don't own, but they'd only ever see that account's own (empty) data. Sessions are an HttpOnly, SameSite=Strict cookie that lasts 12 hours (sliding). Login attempts are limited to 10 per 5 minutes per IP. Passwords are stored only as salted PBKDF2 hashes.
+**Sign in with Google.** "Continue with Google" signs people in with their Gmail account; the first time a Gmail address is used, a new, empty account is created. The backend verifies Google's ID token (signature, expiry, issuer, and that it was issued for this app's Client ID) and only accepts verified `@gmail.com` addresses. An existing account with the same address (e.g. the original admin) is linked on first Google sign-in, keeping its data. Email + password sign-in remains for accounts that have a password.
+
+Setup (one time, in your Google account):
+
+1. Go to https://console.cloud.google.com/ → create or pick a project.
+2. **APIs & Services → OAuth consent screen**: User type *External*, fill in app name and your email, save. While the app is in *Testing*, add the Gmail addresses allowed to sign in under *Test users* (or publish the app).
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID** → *Web application*. Under **Authorized JavaScript origins** add `http://localhost:5173` and `http://localhost:5080`. No redirect URI is needed.
+4. Copy the **Client ID** (`…apps.googleusercontent.com`) into `backend/LendingApp.Api/appsettings.json` → `Google:ClientId`, and restart the API. The Client ID is public by design; there is no client secret to store.
 
 **First admin account.** When the database has no users, the API creates one at startup from configuration. Keep these out of `appsettings.json`; use user-secrets (stored outside the repo) and remove the password once the account exists:
 

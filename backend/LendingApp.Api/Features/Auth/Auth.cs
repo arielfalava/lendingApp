@@ -11,6 +11,7 @@ namespace LendingApp.Api.Features.Auth;
 
 public record UserDto(Guid Id, string Email);
 public record LoginInput(string? Email, string? Password);
+public record GoogleSignInInput(string? Credential);
 
 // ───────────── Commands / queries ─────────────
 
@@ -19,43 +20,95 @@ public record LoginCommand(string Email, string Password) : ICommand<UserDto?>;
 
 public record GetUserQuery(Guid Id) : IQuery<UserDto?>;
 
-/// <summary>Creates an account for a Gmail address. The new user starts with no data of their own.</summary>
-public record RegisterCommand(string? Email, string? Password) : ICommand<UserDto>;
+/// <summary>
+/// Signs in with a Google ID token from the "Continue with Google" button. A Gmail address seen for the first
+/// time gets a new, empty account; an existing account with the same verified address is linked to Google.
+/// Returns null when the token isn't a valid Google sign-in for this app.
+/// </summary>
+public record GoogleSignInCommand(string Credential) : ICommand<UserDto?>;
 
-public partial class RegisterHandler(LendingDbContext db, IPasswordHasher<AppUser> hasher) : ICommandHandler<RegisterCommand, UserDto>
+/// <summary>The verified facts we use from a Google ID token.</summary>
+public record GoogleIdentity(string Subject, string Email, bool EmailVerified);
+
+public interface IGoogleTokenValidator
 {
-    [System.Text.RegularExpressions.GeneratedRegex(@"^[a-z0-9](?:[a-z0-9.+_-]{0,62}[a-z0-9])?@gmail\.com$")]
-    private static partial System.Text.RegularExpressions.Regex GmailAddress();
+    bool IsConfigured { get; }
+    string? ClientId { get; }
+    /// <summary>Checks Google's signature, expiry, issuer and that the token was issued for this app. Null if invalid.</summary>
+    Task<GoogleIdentity?> ValidateAsync(string idToken);
+}
 
-    public async Task<UserDto> Handle(RegisterCommand c, CancellationToken ct)
+public sealed class GoogleTokenValidator(IConfiguration config) : IGoogleTokenValidator
+{
+    public string? ClientId => config["Google:ClientId"] is { Length: > 0 } id ? id.Trim() : null;
+    public bool IsConfigured => ClientId is not null;
+
+    public async Task<GoogleIdentity?> ValidateAsync(string idToken)
     {
-        var email = c.Email?.Trim().ToLowerInvariant() ?? "";
-        var password = c.Password ?? "";
-        var isGmail = GmailAddress().IsMatch(email);
-        var taken = isGmail && await db.Users.AnyAsync(u => u.Email == email, ct);
+        if (ClientId is null) return null;
+        try
+        {
+            var p = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(idToken,
+                new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings { Audience = [ClientId] });
+            return new GoogleIdentity(p.Subject, p.Email ?? "", p.EmailVerified);
+        }
+        catch (Google.Apis.Auth.InvalidJwtException)
+        {
+            return null;
+        }
+    }
+}
 
-        new Rules()
-            .Require(isGmail, "email", "Use a Gmail address (name@gmail.com).")
-            .Require(!taken, "email", "An account with this email already exists. Sign in instead.")
-            .Require(password.Length >= 8, "password", "Use at least 8 characters.")
-            .Require(password.Length <= 128, "password", "Use at most 128 characters.")
-            .Require(password.Any(char.IsLetter) && password.Any(char.IsDigit), "password", "Include at least one letter and one number.")
-            .ThrowIfInvalid();
+public class GoogleSignInHandler(LendingDbContext db, IGoogleTokenValidator google, ILogger<GoogleSignInHandler> logger)
+    : ICommandHandler<GoogleSignInCommand, UserDto?>
+{
+    public async Task<UserDto?> Handle(GoogleSignInCommand c, CancellationToken ct)
+    {
+        if (!google.IsConfigured)
+            throw Invalid("Google sign-in isn't set up yet (Google:ClientId is missing).");
 
-        var user = new AppUser { Email = email };
-        user.PasswordHash = hasher.HashPassword(user, password);
-        db.Users.Add(user);
+        var id = await google.ValidateAsync(c.Credential);
+        if (id is null) return null;
+
+        var email = id.Email.Trim().ToLowerInvariant();
+        if (!id.EmailVerified || !email.EndsWith("@gmail.com", StringComparison.Ordinal))
+            throw Invalid("Use a Gmail account (name@gmail.com) to sign in.");
+
+        // Prefer the stable Google id; fall back to the address to link accounts created before Google sign-in.
+        var user = await db.Users.FirstOrDefaultAsync(u => u.GoogleSubject == id.Subject, ct)
+                   ?? await db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+
+        if (user is null)
+        {
+            user = new AppUser { Email = email, GoogleSubject = id.Subject };
+            db.Users.Add(user);
+            logger.LogInformation("New account {Email} created with Google sign-in.", email);
+        }
+        else if (user.GoogleSubject is null)
+        {
+            user.GoogleSubject = id.Subject;
+            logger.LogInformation("Linked Google sign-in to existing account {Email}.", user.Email);
+        }
+        else if (user.GoogleSubject != id.Subject)
+        {
+            throw Invalid("This email is already linked to a different Google account.");
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException) // two sign-ups for the same address at once: the unique index catches it
+        catch (DbUpdateException) // first sign-in raced with another for the same address
         {
-            throw new ValidationException(new Dictionary<string, string[]> { ["email"] = ["An account with this email already exists. Sign in instead."] });
+            throw Invalid("Please try signing in again.");
         }
         return new UserDto(user.Id, user.Email);
     }
+
+    private static ValidationException Invalid(string message) =>
+        new(new Dictionary<string, string[]> { ["google"] = [message] });
 }
+
 
 public class LoginHandler(LendingDbContext db, IPasswordHasher<AppUser> hasher) : ICommandHandler<LoginCommand, UserDto?>
 {
@@ -67,6 +120,8 @@ public class LoginHandler(LendingDbContext db, IPasswordHasher<AppUser> hasher) 
     {
         var email = c.Email.Trim().ToLowerInvariant();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+        // Google-only accounts have no password, so they can't sign in this way.
+        if (user is { PasswordHash.Length: 0 }) user = null;
         var result = hasher.VerifyHashedPassword(user ?? new AppUser(), user?.PasswordHash ?? DummyHash, c.Password);
         if (user is null || result == PasswordVerificationResult.Failed) return null;
 
@@ -94,6 +149,7 @@ public static class AuthSetup
     public static void AddAppAuth(this IServiceCollection services)
     {
         services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
+        services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
         services.AddAuthorization();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(o =>
@@ -165,10 +221,20 @@ public static class AuthEndpoints
             return Results.Ok(user);
         }).AllowAnonymous().RequireRateLimiting(AuthSetup.LoginRateLimit);
 
-        // Shares the login rate limit, so sign-up can't be used to spam accounts or probe emails quickly.
-        g.MapPost("/register", async (LoginInput input, IDispatcher d, HttpContext http, CancellationToken ct) =>
+        // What the sign-in page needs to show the Google button. The client ID is public by design.
+        g.MapGet("/config", (IGoogleTokenValidator google) => Results.Ok(new { googleClientId = google.ClientId }))
+            .AllowAnonymous();
+
+        // Sign in or create an account with Google. Shares the login rate limit.
+        g.MapPost("/google", async (GoogleSignInInput input, IDispatcher d, HttpContext http, CancellationToken ct) =>
         {
-            var user = await d.Send(new RegisterCommand(input.Email, input.Password), ct);
+            if (string.IsNullOrWhiteSpace(input.Credential))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["google"] = ["Missing Google credential."] });
+
+            var user = await d.Send(new GoogleSignInCommand(input.Credential), ct);
+            if (user is null)
+                return Results.Problem("Google sign-in failed. Please try again.", statusCode: StatusCodes.Status401Unauthorized);
+
             await SignIn(http, user);
             return Results.Ok(user);
         }).AllowAnonymous().RequireRateLimiting(AuthSetup.LoginRateLimit);
