@@ -189,9 +189,11 @@ public class ExportLoansHandler(IDispatcher dispatcher, LendingDbContext db) : I
         ws.Cell(1, 12).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF4D6");
         if (loans.Count > 0)
         {
-            ws.Cell(r, 11).Value = "Total";
+            // Same rule as the Loans page total: only Active and Defaulted loans still count as owed
+            // (a Paid off, Pending or Cancelled row can show a balance but isn't money owed).
+            ws.Cell(r, 11).Value = "Total owed (Active + Defaulted)";
             ws.Cell(r, 11).Style.Font.Bold = true;
-            ws.Cell(r, 12).FormulaA1 = $"SUM(L2:L{r - 1})";
+            ws.Cell(r, 12).FormulaA1 = $"SUMIFS(L2:L{r - 1},G2:G{r - 1},\"Active\")+SUMIFS(L2:L{r - 1},G2:G{r - 1},\"Defaulted\")";
             ws.Cell(r, 12).Style.Font.Bold = true;
             ws.Cell(r, 12).Style.NumberFormat.Format = "#,##0.00";
         }
@@ -199,6 +201,95 @@ public class ExportLoansHandler(IDispatcher dispatcher, LendingDbContext db) : I
         ws.Column(8).Width = Math.Min(ws.Column(8).Width, 50);
 
         return LoanSheet.ToBytes(wb);
+    }
+}
+
+// ───────────── Single-loan export (query) ─────────────
+
+/// <summary>One loan as a workbook: a "Loan" sheet with its terms and totals and a "Payments" sheet with a running balance.</summary>
+public record ExportLoanQuery(Guid LoanId) : IQuery<(string FileName, byte[] File)>;
+
+public class ExportLoanHandler(IDispatcher dispatcher) : IQueryHandler<ExportLoanQuery, (string FileName, byte[] File)>
+{
+    public async Task<(string FileName, byte[] File)> Handle(ExportLoanQuery q, CancellationToken ct)
+    {
+        var detail = await dispatcher.Query(new GetLoanQuery(q.LoanId), ct);
+        var l = detail.Loan;
+        var payments = detail.Payments.OrderBy(p => p.PaidOn).ThenBy(p => p.CreatedAt).ToList();
+
+        using var wb = new XLWorkbook();
+        var info = wb.AddWorksheet("Loan");
+        DateTime D(DateOnly d) => d.ToDateTime(TimeOnly.MinValue);
+        (string Label, object? Value, string? Format)[] rows =
+        [
+            ("Borrower", l.BorrowerName, null),
+            (LoanSheet.Principal, l.Principal, "#,##0.00"),
+            (LoanSheet.Interest, l.InterestRate, null),
+            ("Interest type", l.InterestType.ToString(), null),
+            (LoanSheet.Term, l.TermUnit == TermUnit.NoDeadline ? null : l.Term, null),
+            (LoanSheet.TermUnit, LoanSheet.Label(l.TermUnit), null),
+            ("Installment", l.Installment, "#,##0.00"),
+            (LoanSheet.StartDate, D(l.StartDate), "yyyy-mm-dd"),
+            ("Due date", l.MaturityDate is { } m ? D(m) : null, "yyyy-mm-dd"),
+            (LoanSheet.Status, LoanSheet.Label(l.Status), null),
+            (LoanSheet.Remarks, l.Notes, null),
+            ("Total owed", l.TotalDue, "#,##0.00"),
+            ("Total paid", l.TotalPaid, "#,##0.00"),
+            ("Remaining balance", l.Balance, "#,##0.00"),
+            ("Payments", payments.Count, null),
+            ("Exported", DateTime.Now, "yyyy-mm-dd hh:mm"),
+        ];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            info.Cell(i + 1, 1).Value = rows[i].Label;
+            info.Cell(i + 1, 1).Style.Font.Bold = true;
+            info.Cell(i + 1, 2).Value = XLCellValue.FromObject(rows[i].Value);
+            if (rows[i].Format is { } f)
+            {
+                if (rows[i].Value is DateTime) info.Cell(i + 1, 2).Style.DateFormat.Format = f;
+                else info.Cell(i + 1, 2).Style.NumberFormat.Format = f;
+            }
+        }
+        info.Column(1).Width = 20;
+        info.Column(2).Width = 50;
+
+        var ps = wb.AddWorksheet("Payments");
+        string[] head = ["Paid on", "Amount", "Balance after", "Note"];
+        for (var c = 0; c < head.Length; c++)
+        {
+            ps.Cell(1, c + 1).Value = head[c];
+            ps.Cell(1, c + 1).Style.Font.Bold = true;
+            ps.Cell(1, c + 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF0F3");
+        }
+        ps.SheetView.FreezeRows(1);
+        var r = 2;
+        var balance = l.TotalDue;
+        foreach (var p in payments)
+        {
+            balance -= p.Amount;
+            ps.Cell(r, 1).Value = D(p.PaidOn);
+            ps.Cell(r, 2).Value = p.Amount;
+            ps.Cell(r, 3).Value = balance;
+            ps.Cell(r, 4).Value = p.Note;
+            r++;
+        }
+        if (payments.Count > 0)
+        {
+            ps.Cell(r, 1).Value = "Total paid";
+            ps.Cell(r, 1).Style.Font.Bold = true;
+            ps.Cell(r, 2).FormulaA1 = $"SUM(B2:B{r - 1})";
+            ps.Cell(r, 2).Style.Font.Bold = true;
+        }
+        ps.Range(2, 1, Math.Max(r, 2), 1).Style.DateFormat.Format = "yyyy-mm-dd";
+        ps.Range(2, 2, Math.Max(r, 2), 3).Style.NumberFormat.Format = "#,##0.00";
+        ps.Column(1).Width = 14;
+        ps.Column(2).Width = 14;
+        ps.Column(3).Width = 14;
+        ps.Column(4).Width = 40;
+
+        var who = new string(l.BorrowerName.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray()).Trim('-');
+        var name = $"loan-{(who.Length > 0 ? who + "-" : "")}{l.StartDate:yyyy-MM-dd}.xlsx";
+        return (name, LoanSheet.ToBytes(wb));
     }
 }
 
@@ -386,6 +477,12 @@ public static class LoanExcelEndpoints
 
         g.MapGet("/export", async (LoanStatus? status, Guid? borrowerId, string? search, IDispatcher d, CancellationToken ct) =>
             Results.File(await d.Query(new ExportLoansQuery(status, borrowerId, search), ct), LoanSheet.ContentType, $"loans-{today()}.xlsx"));
+
+        g.MapGet("/{id:guid}/export", async (Guid id, IDispatcher d, CancellationToken ct) =>
+        {
+            var (name, file) = await d.Query(new ExportLoanQuery(id), ct);
+            return Results.File(file, LoanSheet.ContentType, name);
+        });
 
         g.MapGet("/import-template", async (IDispatcher d, CancellationToken ct) =>
             Results.File(await d.Query(new GetImportTemplateQuery(), ct), LoanSheet.ContentType, "loan-import-template.xlsx"));

@@ -27,6 +27,11 @@ export default function LoanDetail() {
     try { await api.deleteLoan(id); navigate('/loans') } catch (e) { setActionError(e) }
   }
 
+  const exportExcel = async () => {
+    setActionError(null)
+    try { await api.exportLoan(id) } catch (e) { setActionError(e) }
+  }
+
   if (error) return <ErrorBanner error={error} />
   if (!data) return <Loading />
   const { loan, payments } = data
@@ -41,6 +46,7 @@ export default function LoanDetail() {
           <h1>{fmtMoney(loan.principal)} <StatusBadge status={loan.status} /></h1>
         </div>
         <div className="actions">
+          <button className="btn" onClick={exportExcel} title="This loan and all its payments">Export Excel</button>
           <button className="btn" onClick={() => setModal({ type: 'edit' })}>Edit</button>
           <button className="btn btn-danger" onClick={deleteLoan}>Delete</button>
           <button

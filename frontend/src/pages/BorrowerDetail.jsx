@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, LOAN_STATUSES } from '../api'
 import { BorrowerForm, LoanForm } from '../components/forms'
 import { HistoryTimeline } from '../components/HistoryTimeline'
 import { ImportBorrowerDialog } from '../components/ImportBorrower'
 import { ErrorBanner, Loading } from '../components/ui'
 import { LoansTable } from './Loans'
-import { fmtDate, fmtMoney, fullName, useAsync } from '../util'
+import { fmtDate, fmtMoney, fullName, statusLabel, useAsync } from '../util'
 
 export default function BorrowerDetail() {
   const { id } = useParams()
@@ -14,6 +14,7 @@ export default function BorrowerDetail() {
   const [version, setVersion] = useState(0)
   const [modal, setModal] = useState(null) // 'edit' | 'loan'
   const [actionError, setActionError] = useState(null)
+  const [status, setStatus] = useState('')
 
   const borrower = useAsync(() => api.borrower(id), [id, version])
   const loans = useAsync(() => api.loans({ borrowerId: id }), [id, version])
@@ -27,6 +28,13 @@ export default function BorrowerDetail() {
     } catch (e) {
       setActionError(e)
     }
+  }
+
+  const shownLoans = status && loans.data ? { ...loans, data: loans.data.filter((l) => l.status === status) } : loans
+
+  const exportLoan = async (loanId) => {
+    setActionError(null)
+    try { await api.exportLoan(loanId) } catch (e) { setActionError(e) }
   }
 
   const exportExcel = async () => {
@@ -68,8 +76,34 @@ export default function BorrowerDetail() {
       </section>
 
       <section className="card table-card">
-        <h2 className="card-pad">Loans</h2>
-        <LoansTable loans={loans} hideBorrower emptyText="This borrower has no loans yet." />
+        <div className="card-pad section-head">
+          <h2>Loans</h2>
+          {loans.data?.length > 0 && (
+            <div className="segmented" role="tablist" aria-label="Filter loans by status">
+              {['', ...LOAN_STATUSES].map((s) => {
+                const count = s ? loans.data.filter((l) => l.status === s).length : loans.data.length
+                return (
+                  <button
+                    key={s || 'all'}
+                    role="tab"
+                    aria-selected={status === s}
+                    className={status === s ? 'active' : ''}
+                    disabled={s !== '' && count === 0 && status !== s}
+                    onClick={() => setStatus(s)}
+                  >
+                    {s ? statusLabel(s) : 'All'} <span className="muted">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <LoansTable
+          loans={shownLoans}
+          hideBorrower
+          onExport={exportLoan}
+          emptyText={status ? `No ${statusLabel(status).toLowerCase()} loans.` : 'This borrower has no loans yet.'}
+        />
       </section>
 
       <section className="card">

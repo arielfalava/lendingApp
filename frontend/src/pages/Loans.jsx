@@ -6,7 +6,8 @@ import { ImportLoansDialog } from '../components/ImportLoans'
 import { Empty, ErrorBanner, Loading, StatusBadge } from '../components/ui'
 import { countsAsOwed, fmtDate, fmtMoney, rateLabel, statusLabel, termLabel, useAsync } from '../util'
 
-export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans found.' }) {
+/** `onExport(loanId)`, when given, adds an Export button to each row. */
+export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans found.', onExport }) {
   const navigate = useNavigate()
   if (loans.error) return <ErrorBanner error={loans.error} />
   if (loans.loading && !loans.data) return <Loading />
@@ -28,6 +29,7 @@ export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans 
             {!hideBorrower && <th>Borrower</th>}
             <th className="r">Principal</th><th className="r">Rate</th><th className="r">Term</th>
             <th>Start</th><th className="r">Paid</th><th className="r">Remaining balance</th><th>Status</th><th>Remarks</th>
+            {onExport && <th><span className="sr-only">Export</span></th>}
           </tr>
         </thead>
         <tbody>
@@ -44,6 +46,17 @@ export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans 
               <td className="r num"><strong>{fmtMoney(l.balance)}</strong></td>
               <td><StatusBadge status={l.status} /></td>
               <td className="truncate muted" title={l.notes ?? ''}>{l.notes ?? '—'}</td>
+              {onExport && (
+                <td className="r">
+                  <button
+                    className="btn btn-sm"
+                    title="Download this loan and its payments as Excel"
+                    onClick={(e) => { e.stopPropagation(); onExport(l.id) }}
+                  >
+                    Export
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
