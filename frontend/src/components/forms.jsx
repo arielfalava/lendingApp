@@ -173,12 +173,9 @@ export function LoanForm({ loan, defaultBorrowerId, onClose, onSaved }) {
 }
 
 export function PaymentForm({ loan, payment, onClose, onSaved }) {
-  // No-deadline loans have no installment, so suggest the full balance instead.
-  const due = loan.balance + (payment?.amount ?? 0)
-  const suggested = loan.installment == null ? due : Math.min(loan.installment, due)
   const f = useForm(
     {
-      amount: payment?.amount ?? (suggested > 0 ? suggested.toFixed(2) : ''),
+      amount: payment?.amount ?? 0,
       paidOn: payment?.paidOn ?? today(),
       note: payment?.note ?? '',
     },

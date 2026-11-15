@@ -67,7 +67,9 @@ export function LoansTable({ loans, hideBorrower = false, emptyText = 'No loans 
 
 export default function Loans() {
   const [params, setParams] = useSearchParams()
-  const status = params.get('status') ?? ''
+  // No status in the URL means Active; "all" is the explicit "All" tab.
+  const rawStatus = params.get('status')
+  const status = rawStatus == null ? 'Active' : rawStatus === 'all' ? '' : rawStatus
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -101,7 +103,7 @@ export default function Loans() {
               role="tab"
               aria-selected={status === s}
               className={status === s ? 'active' : ''}
-              onClick={() => setParams(s ? { status: s } : {})}
+              onClick={() => setParams(s === 'Active' ? {} : { status: s || 'all' })}
             >
               {s ? statusLabel(s) : 'All'}
             </button>
